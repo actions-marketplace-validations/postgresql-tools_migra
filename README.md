@@ -1,7 +1,5 @@
 # migra — PostgreSQL Schema Diff Tool
 
-[![PyPI version](https://img.shields.io/pypi/v/migradiff)](https://pypi.org/project/migradiff/)
-[![Python versions](https://img.shields.io/pypi/pyversions/migradiff)](https://pypi.org/project/migradiff/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **The actively maintained fork of [djrobstep/migra](https://github.com/djrobstep/migra).**
@@ -30,6 +28,14 @@ lights on and making it better.
 
 ```bash
 pip install migradiff
+```
+
+> **Note:** PyPI release coming with v1.1.0. Until then, install from source:
+
+```bash
+git clone https://github.com/migradiff/migra
+cd migra
+pip install -e .
 ```
 
 Requires Python 3.10+ and a running PostgreSQL instance (12+).
