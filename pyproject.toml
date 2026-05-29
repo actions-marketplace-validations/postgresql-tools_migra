@@ -1,13 +1,14 @@
 [tool.poetry]
-name = "migra"
+name = "migradiff"
 version = "1.1.0"
-authors = [ "Robert Lechte <robertlechte@gmail.com>",]
-license = "Unlicense"
+authors = [ "MigraDiff Team <migradiff@anomalyco.com>",]
+license = "MIT"
 readme = "README.md"
-description = "Like `diff` but for PostgreSQL schemas"
+description = "Like `diff` but for PostgreSQL schemas — actively maintained fork"
 
-repository = "https://github.com/djrobstep/migra"
-homepage = "https://databaseci.com/docs/migra"
+repository = "https://github.com/migradiff/migra"
+homepage = "https://github.com/migradiff/migra"
+packages = [{ include = "migra" }]
 
 [tool.poetry.dependencies]
 python = ">=3.7,<4"
