@@ -12,6 +12,9 @@ COPY pyproject.toml README.md ./
 
 RUN pip install --no-cache-dir .
 
+COPY action-entrypoint.sh .
+RUN chmod +x action-entrypoint.sh
+
 USER migradiff
 
-ENTRYPOINT ["migra"]
+ENTRYPOINT ["/app/action-entrypoint.sh"]

@@ -19,3 +19,7 @@
 - .dockerignore: excludes tests, docs, and dev assets from image
 - docker-build.sh: convenience script for local image builds
 - requirements.txt: pinned runtime dependencies for reproducible builds
+- action.yml: GitHub Actions action for CI schema drift detection;
+  supports connection strings, --from-file mode, JSON output,
+  and fail_on_destructive flag
+- action-entrypoint.sh: Docker entrypoint for GitHub Actions runtime

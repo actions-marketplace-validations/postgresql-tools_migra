@@ -54,7 +54,7 @@ def _extract_object_name(sql):
 def _original_case(original, uppercase_piece):
     idx = original.strip().upper().find(uppercase_piece)
     if idx >= 0:
-        return original.strip()[idx : idx + len(uppercase_piece)]
+        return original.strip()[idx : idx + len(uppercase_piece)]  # noqa: E203
     return uppercase_piece
 
 
@@ -62,29 +62,63 @@ def classify_sql_statement(sql):
     normalized = sql.strip().upper()
     stmt_type, operation = _sql_type(sql)
 
-    m = re.match(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$", normalized)
+    m = re.match(
+        r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$",
+        normalized,
+    )
     if m:
         name = _original_case(sql, m.group(1).strip())
-        return {"type": stmt_type, "operation": "DROP", "object": name, "risk": "destructive"}
+        return {
+            "type": stmt_type,
+            "operation": "DROP",
+            "object": name,
+            "risk": "destructive",
+        }
 
-    m = re.match(r"ALTER\s+TABLE\s+(.+?)\s+DROP\s+(?:COLUMN\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$", normalized)
+    m = re.match(
+        r"ALTER\s+TABLE\s+(.+?)\s+DROP\s+(?:COLUMN\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$",
+        normalized,
+    )
     if m:
         name = _original_case(sql, m.group(1).strip())
-        return {"type": stmt_type, "operation": "DROP COLUMN", "object": name, "risk": "destructive"}
+        return {
+            "type": stmt_type,
+            "operation": "DROP COLUMN",
+            "object": name,
+            "risk": "destructive",
+        }
 
     m = re.match(r"TRUNCATE\s+(?:TABLE\s+)?(.+?);?\s*$", normalized)
     if m:
         name = _original_case(sql, m.group(1).strip())
-        return {"type": stmt_type, "operation": "TRUNCATE", "object": name, "risk": "destructive"}
+        return {
+            "type": stmt_type,
+            "operation": "TRUNCATE",
+            "object": name,
+            "risk": "destructive",
+        }
 
-    m = re.match(r"ALTER\s+TABLE\s+(.+?)\s+RENAME\s+(?:TO\s+|COLUMN\s+|CONSTRAINT\s+)?(.+?);?\s*$", normalized)
+    m = re.match(
+        r"ALTER\s+TABLE\s+(.+?)\s+RENAME\s+(?:TO\s+|COLUMN\s+|CONSTRAINT\s+)?(.+?);?\s*$",
+        normalized,
+    )
     if m:
         name = _original_case(sql, m.group(1).strip())
-        return {"type": stmt_type, "operation": "RENAME", "object": name, "risk": "warning"}
+        return {
+            "type": stmt_type,
+            "operation": "RENAME",
+            "object": name,
+            "risk": "warning",
+        }
 
     obj = _extract_object_name(sql)
     first_word = normalized.split()[0] if normalized.split() else ""
-    return {"type": stmt_type, "operation": first_word, "object": obj or "", "risk": "safe"}
+    return {
+        "type": stmt_type,
+        "operation": first_word,
+        "object": obj or "",
+        "risk": "safe",
+    }
 
 
 def redact_credentials(url):
@@ -98,13 +132,15 @@ def format_json_output(statements, source, target):
 
     for sql in statements:
         info = classify_sql_statement(sql)
-        stmt_list.append({
-            "sql": sql,
-            "type": info["type"],
-            "operation": info["operation"],
-            "object": info["object"],
-            "risk": info["risk"],
-        })
+        stmt_list.append(
+            {
+                "sql": sql,
+                "type": info["type"],
+                "operation": info["operation"],
+                "object": info["object"],
+                "risk": info["risk"],
+            }
+        )
         if info["risk"] == "destructive":
             has_destructive = True
         elif info["risk"] == "warning":

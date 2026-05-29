@@ -330,9 +330,7 @@ def test_json_output_classify_drop_table():
 def test_json_output_classify_drop_column():
     from migra.command import classify_sql_statement
 
-    info = classify_sql_statement(
-        'ALTER TABLE "public"."users" DROP COLUMN "email";'
-    )
+    info = classify_sql_statement('ALTER TABLE "public"."users" DROP COLUMN "email";')
     assert info["risk"] == "destructive"
     assert info["type"] == "ALTER TABLE"
     assert info["operation"] == "DROP COLUMN"
@@ -359,9 +357,7 @@ def test_json_output_classify_rename():
 def test_json_output_classify_safe():
     from migra.command import classify_sql_statement
 
-    info = classify_sql_statement(
-        'CREATE TABLE "public"."users" ("id" integer);'
-    )
+    info = classify_sql_statement('CREATE TABLE "public"."users" ("id" integer);')
     assert info["risk"] == "safe"
     assert info["type"] == "CREATE TABLE"
     assert info["operation"] == "CREATE"
@@ -398,7 +394,11 @@ def test_json_output_format_mixed():
         'DROP TABLE "public"."legacy";',
         'ALTER TABLE "public"."t" RENAME TO "t2";',
     ]
-    result = format_json_output(statements, "postgresql://user:pass@localhost/db_a", "postgresql://user:pass@localhost/db_b")
+    result = format_json_output(
+        statements,
+        "postgresql://user:pass@localhost/db_a",
+        "postgresql://user:pass@localhost/db_b",
+    )
     import json
 
     data = json.loads(result)
@@ -497,7 +497,9 @@ def test_json_output_from_file():
         fb_path = fb.name
 
     try:
-        args = parse_args(["--unsafe", "--from-file", "--output", "json", fa_path, fb_path])
+        args = parse_args(
+            ["--unsafe", "--from-file", "--output", "json", fa_path, fb_path]
+        )
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
         assert status == 2
@@ -514,6 +516,11 @@ def test_json_output_from_file():
 def test_json_output_credential_redaction():
     from migra.command import redact_credentials
 
-    assert redact_credentials("postgresql://user:secret@localhost/db") == "postgresql://***:***@localhost/db"
-    assert redact_credentials("postgresql://localhost/db") == "postgresql://localhost/db"
+    assert (
+        redact_credentials("postgresql://user:secret@localhost/db")
+        == "postgresql://***:***@localhost/db"
+    )
+    assert (
+        redact_credentials("postgresql://localhost/db") == "postgresql://localhost/db"
+    )
     assert redact_credentials("schema_a.sql") == "schema_a.sql"
