@@ -524,3 +524,165 @@ def test_json_output_credential_redaction():
         redact_credentials("postgresql://localhost/db") == "postgresql://localhost/db"
     )
     assert redact_credentials("schema_a.sql") == "schema_a.sql"
+
+
+# --- Composite type tests ---
+
+
+def test_composite_type_field_added():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute("CREATE TYPE public.address AS (street text, city text);")
+            s1.execute(
+                "CREATE TYPE public.address AS (street text, city text, postcode text);"
+            )
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "drop type" in sql
+        assert "create type" in sql
+        assert "postcode" in sql
+
+
+def test_composite_type_field_removed():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute(
+                "CREATE TYPE public.address AS (street text, city text, postcode text);"
+            )
+            s1.execute("CREATE TYPE public.address AS (street text, city text);")
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "drop type" in sql
+        assert "create type" in sql
+        assert "postcode" not in sql
+
+
+def test_composite_type_field_type_changed():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute("CREATE TYPE public.address AS (street text, city text);")
+            s1.execute(
+                "CREATE TYPE public.address AS (street varchar(100), city text);"
+            )
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "drop type" in sql
+        assert "create type" in sql
+
+
+def test_composite_type_dropped():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute("CREATE TYPE public.address AS (street text, city text);")
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "drop type" in sql
+        assert "address" in sql
+
+
+def test_composite_type_added():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s1.execute("CREATE TYPE public.address AS (street text, city text);")
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "create type" in sql
+        assert "address" in sql
+
+
+# --- Domain tests ---
+
+
+def test_domain_constraint_added():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute(
+                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+            )
+            s1.execute(
+                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0) CHECK (VALUE < 1000000);"
+            )
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "drop domain" in sql
+        assert "create domain" in sql
+
+
+def test_domain_base_type_changed():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute(
+                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+            )
+            s1.execute("CREATE DOMAIN public.positive_int AS bigint CHECK (VALUE > 0);")
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "drop domain" in sql
+        assert "create domain" in sql
+
+
+def test_domain_dropped():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute(
+                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+            )
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "drop domain" in sql
+
+
+def test_domain_added():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s1.execute(
+                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+            )
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        sql = m.sql.strip()
+        assert "create domain" in sql

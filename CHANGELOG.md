@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- Composite type diffing: detects field additions, removals, and type
+  changes; generates safe drop + create DDL
+- Domain diffing: detects constraint and base type changes
+
 ### Changed
 - Pinned schemainspect==3.1.1663587362 for reproducible builds and
   test results (upgraded from 3.1.1663480743)
