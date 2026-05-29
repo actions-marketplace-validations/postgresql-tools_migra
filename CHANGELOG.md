@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 
-_No changes staged yet._
+### Changed
+- Pinned schemainspect==3.1.1663587362 for reproducible builds and
+  test results (upgraded from 3.1.1663480743)
 
 ---
 
