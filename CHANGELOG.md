@@ -15,3 +15,7 @@
 - `--output json` mode: structured diff output with per-statement risk
   classification (safe / warning / destructive) and summary metadata;
   credentials redacted from connection string fields
+- Dockerfile: python:3.12-slim base, non-root user, minimal image size
+- .dockerignore: excludes tests, docs, and dev assets from image
+- docker-build.sh: convenience script for local image builds
+- requirements.txt: pinned runtime dependencies for reproducible builds
