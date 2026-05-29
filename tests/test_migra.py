@@ -312,3 +312,215 @@ def test_from_file_with_url():
     status = run(args, out=out, err=err)
     assert status == 1
     assert "URL" in err.getvalue()
+
+
+# --- JSON output tests ---
+
+
+def test_json_output_classify_drop_table():
+    from migra.command import classify_sql_statement
+
+    info = classify_sql_statement('DROP TABLE IF EXISTS "public"."users";')
+    assert info["risk"] == "destructive"
+    assert info["type"] == "DROP TABLE"
+    assert info["operation"] == "DROP"
+    assert info["object"] == '"public"."users"'
+
+
+def test_json_output_classify_drop_column():
+    from migra.command import classify_sql_statement
+
+    info = classify_sql_statement('ALTER TABLE "public"."users" DROP COLUMN "email";')
+    assert info["risk"] == "destructive"
+    assert info["type"] == "ALTER TABLE"
+    assert info["operation"] == "DROP COLUMN"
+
+
+def test_json_output_classify_truncate():
+    from migra.command import classify_sql_statement
+
+    info = classify_sql_statement('TRUNCATE "public"."users";')
+    assert info["risk"] == "destructive"
+    assert info["type"] == "TRUNCATE"
+    assert info["operation"] == "TRUNCATE"
+
+
+def test_json_output_classify_rename():
+    from migra.command import classify_sql_statement
+
+    info = classify_sql_statement('ALTER TABLE "public"."users" RENAME TO "customers";')
+    assert info["risk"] == "warning"
+    assert info["type"] == "ALTER TABLE"
+    assert info["operation"] == "RENAME"
+
+
+def test_json_output_classify_safe():
+    from migra.command import classify_sql_statement
+
+    info = classify_sql_statement('CREATE TABLE "public"."users" ("id" integer);')
+    assert info["risk"] == "safe"
+    assert info["type"] == "CREATE TABLE"
+    assert info["operation"] == "CREATE"
+
+
+def test_json_output_classify_drop_view_not_destructive():
+    from migra.command import classify_sql_statement
+
+    info = classify_sql_statement('DROP VIEW IF EXISTS "public"."v";')
+    assert info["risk"] == "safe"
+    assert info["type"] == "DROP VIEW"
+    assert info["operation"] == "DROP"
+
+
+def test_json_output_format_empty():
+    from migra.command import format_json_output
+
+    result = format_json_output([], "source_url", "target_url")
+    import json
+
+    data = json.loads(result)
+    assert data["version"] == "1.0"
+    assert data["summary"]["total_statements"] == 0
+    assert data["summary"]["has_destructive_operations"] is False
+    assert data["summary"]["risk_level"] == "low"
+    assert data["statements"] == []
+
+
+def test_json_output_format_mixed():
+    from migra.command import format_json_output
+
+    statements = [
+        'CREATE TABLE "public"."users" ("id" integer);',
+        'DROP TABLE "public"."legacy";',
+        'ALTER TABLE "public"."t" RENAME TO "t2";',
+    ]
+    result = format_json_output(
+        statements,
+        "postgresql://user:pass@localhost/db_a",
+        "postgresql://user:pass@localhost/db_b",
+    )
+    import json
+
+    data = json.loads(result)
+    assert data["version"] == "1.0"
+    assert data["summary"]["total_statements"] == 3
+    assert data["summary"]["has_destructive_operations"] is True
+    assert data["summary"]["risk_level"] == "high"
+
+    # Check credentials redacted
+    assert "***:***" in data["source"]
+    assert "user:pass" not in data["source"]
+    assert "***:***" in data["target"]
+    assert "user:pass" not in data["target"]
+
+    # Check statement details
+    assert data["statements"][0]["risk"] == "safe"
+    assert data["statements"][1]["risk"] == "destructive"
+    assert data["statements"][2]["risk"] == "warning"
+
+
+def test_json_output_format_warning_level():
+    from migra.command import format_json_output
+
+    statements = [
+        'ALTER TABLE "public"."users" RENAME TO "customers";',
+    ]
+    result = format_json_output(statements, "s1", "s2")
+    import json
+
+    data = json.loads(result)
+    assert data["summary"]["has_destructive_operations"] is False
+    assert data["summary"]["risk_level"] == "medium"
+
+
+def test_json_output_integration():
+    import json
+
+    fixture_path = "tests/FIXTURES/enumdeps/"
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            load_sql_from_file(s0, fixture_path + "a.sql")
+            load_sql_from_file(s1, fixture_path + "b.sql")
+
+        args = parse_args(["--unsafe", "--output", "json", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        data = json.loads(out.getvalue())
+
+        assert data["version"] == "1.0"
+        assert data["summary"]["total_statements"] > 0
+        for stmt in data["statements"]:
+            assert "sql" in stmt
+            assert "type" in stmt
+            assert "operation" in stmt
+            assert "object" in stmt
+            assert "risk" in stmt
+            assert stmt["risk"] in ("safe", "warning", "destructive")
+        assert isinstance(data["summary"]["has_destructive_operations"], bool)
+        assert data["summary"]["risk_level"] in ("low", "medium", "high")
+        assert "generated_at" in data
+
+
+def test_json_output_empty_diff():
+    import json
+
+    args = parse_args(["--unsafe", "--output", "json", "EMPTY", "EMPTY"])
+    out, err = io.StringIO(), io.StringIO()
+    status = run(args, out=out, err=err)
+    assert status == 0
+    data = json.loads(out.getvalue())
+    assert data["summary"]["total_statements"] == 0
+    assert data["summary"]["risk_level"] == "low"
+    assert data["statements"] == []
+
+
+def test_json_output_from_file():
+    import json
+    import tempfile
+    import os
+
+    fixture_path = "tests/FIXTURES/enumdeps/"
+    with open(fixture_path + "a.sql") as f:
+        a_sql = f.read()
+    with open(fixture_path + "b.sql") as f:
+        b_sql = f.read()
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".sql", delete=False
+    ) as fa, tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as fb:
+        fa.write(a_sql)
+        fb.write(b_sql)
+        fa_path = fa.name
+        fb_path = fb.name
+
+    try:
+        args = parse_args(
+            ["--unsafe", "--from-file", "--output", "json", fa_path, fb_path]
+        )
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        data = json.loads(out.getvalue())
+        # In from-file mode, source/target should be file paths
+        assert data["source"] == fa_path
+        assert data["target"] == fb_path
+        assert data["summary"]["total_statements"] > 0
+    finally:
+        os.unlink(fa_path)
+        os.unlink(fb_path)
+
+
+def test_json_output_credential_redaction():
+    from migra.command import redact_credentials
+
+    assert (
+        redact_credentials("postgresql://user:secret@localhost/db")
+        == "postgresql://***:***@localhost/db"
+    )
+    assert (
+        redact_credentials("postgresql://localhost/db") == "postgresql://localhost/db"
+    )
+    assert redact_credentials("schema_a.sql") == "schema_a.sql"

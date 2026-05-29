@@ -32,6 +32,14 @@ cd migra
 pip install -e .
 ```
 
+> **Note:** PyPI release coming with v1.1.0. Until then, install from source:
+
+```bash
+git clone https://github.com/migradiff/migra
+cd migra
+pip install -e .
+```
+
 Requires Python 3.10+ and a running PostgreSQL instance (12+).
 
 > **Note:** PyPI package coming with v1.1.0.

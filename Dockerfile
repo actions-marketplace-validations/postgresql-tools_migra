@@ -1,13 +1,20 @@
-FROM python:3.9-alpine
+FROM python:3.12-slim
 
-RUN apk add --update --no-cache --upgrade postgresql-libs && \
-  apk add --no-cache --virtual=build-dependencies build-base postgresql-dev && \
-  pip install --no-cache-dir packaging psycopg2-binary migra && \
-  apk del build-dependencies && \
-  rm -rf /tmp/* /var/tmp/* /var/cache/apk/*
+RUN useradd --create-home --shell /bin/bash migradiff
 
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+WORKDIR /app
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["migra", "--help"]
+COPY migra/ ./migra/
+COPY pyproject.toml README.md ./
+
+RUN pip install --no-cache-dir .
+
+COPY action-entrypoint.sh .
+RUN chmod +x action-entrypoint.sh
+
+USER migradiff
+
+ENTRYPOINT ["/app/action-entrypoint.sh"]
