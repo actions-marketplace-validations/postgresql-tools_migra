@@ -8,6 +8,8 @@
 - Domain diffing: detects constraint and base type changes
 
 ### Fixed
+- Resolved pre-existing E721 flake8 warning (type comparison)
+  in test suite — codebase now has zero flake8 warnings
 - Materialized view CREATE statements now generated in correct
   dependency order via topological sort; circular dependencies
   produce a clear error instead of incorrect output
