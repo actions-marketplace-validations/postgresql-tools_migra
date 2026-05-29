@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+_No changes staged yet._
+
+---
+
+## [1.2.0] - 2026-05-29
+
 ### Added
 - Smart column rename detection: when a DROP COLUMN + ADD COLUMN pair
   of the same type is detected in the same table, MigraDiff prompts
