@@ -106,11 +106,9 @@ SELECT 1 FROM pg_roles WHERE rolname=:rolename
     role_exists = bool(list(role))
 
     if not role_exists:
-        s.execute(
-            f"""
+        s.execute(f"""
             create role {rolename};
-        """
-        )
+        """)
 
 
 def test_rls():
