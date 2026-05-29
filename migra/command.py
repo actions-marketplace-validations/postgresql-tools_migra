@@ -183,6 +183,97 @@ def format_json_output(statements, source, target):
     )
 
 
+def _normalize_type(raw_type):
+    t = raw_type.strip().upper()
+    for kw in ["NOT NULL", "NULL", "DEFAULT", "USING", "CASCADE", "RESTRICT"]:
+        idx = t.find(" " + kw)
+        if idx > 0:
+            t = t[:idx]
+    return t.strip()
+
+
+def _parse_alter_table(stmt):
+    m = re.match(
+        r"ALTER\s+TABLE\s+(.+?)\s+(DROP|ADD)\s+(?:COLUMN\s+)?(.+)",
+        stmt.strip(),
+        re.IGNORECASE,
+    )
+    if not m:
+        return None
+    table = m.group(1).strip()
+    op = m.group(2).upper()
+    rest = m.group(3).strip().rstrip(";").strip()
+    col_match = re.match(r'"([^"]+)"\s*(.*)', rest)
+    if not col_match:
+        return None
+    col_name = col_match.group(1)
+    col_extra = col_match.group(2).strip()
+    return table, op, col_name, col_extra
+
+
+def detect_column_renames(statements, interactive=False, auto_accept=False):
+    if not auto_accept and not interactive:
+        return list(statements)
+
+    drops = {}
+    adds = {}
+
+    for stmt in statements:
+        parsed = _parse_alter_table(stmt)
+        if parsed:
+            table, op, col_name, col_extra = parsed
+            if op == "DROP":
+                drops.setdefault(table, []).append((col_name, stmt))
+            elif op == "ADD":
+                adds.setdefault(table, []).append((col_name, col_extra, stmt))
+
+    result = list(statements)
+    for table in set(drops.keys()) & set(adds.keys()):
+        table_drops = list(drops[table])
+        table_adds = list(adds[table])
+        used_adds = set()
+
+        for drop_idx, (drop_col, drop_stmt) in enumerate(table_drops):
+            for add_idx, (add_col, add_type, add_stmt) in enumerate(table_adds):
+                if add_idx in used_adds:
+                    continue
+                if drop_col == add_col:
+                    continue
+                if not _normalize_type(add_type):
+                    continue
+
+                drop_stmt_idx = result.index(drop_stmt)
+                add_stmt_idx = result.index(add_stmt)
+                rename = 'alter table {} rename column "{}" to "{}";'.format(
+                    table, drop_col, add_col
+                )
+                result[drop_stmt_idx] = rename
+                result[add_stmt_idx] = None
+                used_adds.add(add_idx)
+                break
+
+    return [s for s in result if s is not None]
+
+
+def _check_for_destructive(statements):
+    """Check if any statement is destructive. Returns list of destructive statements."""
+    destructive = []
+    for stmt in statements:
+        info = classify_sql_statement(stmt)
+        if info["risk"] == "destructive":
+            destructive.append(stmt)
+    return destructive
+
+
+def _format_destructive_summary(statements):
+    """Format a summary of destructive operations for user output."""
+    lines = []
+    for stmt in statements:
+        info = classify_sql_statement(stmt)
+        lines.append("  {} {}".format(info["type"], info["object"]))
+    return "\n".join(lines)
+
+
 @contextmanager
 def arg_context(x):
     if x == "EMPTY":
@@ -271,6 +362,34 @@ def parse_args(args):
         choices=["sql", "json"],
         help="Output format: plain SQL (default) or structured JSON",
     )
+    parser.add_argument(
+        "--rename-columns",
+        dest="rename_columns",
+        action="store_true",
+        default=False,
+        help="Auto-accept column renames without prompting",
+    )
+    parser.add_argument(
+        "--no-rename-detection",
+        dest="no_rename_detection",
+        action="store_true",
+        default=False,
+        help="Disable column rename detection entirely",
+    )
+    parser.add_argument(
+        "--force-destructive",
+        dest="force_destructive",
+        action="store_true",
+        default=False,
+        help="Allow destructive operations (DROP TABLE, DROP COLUMN, etc.)",
+    )
+    parser.add_argument(
+        "--safe",
+        dest="safe",
+        action="store_true",
+        default=False,
+        help="Explicit safe mode (default): halt on destructive operations",
+    )
     parser.add_argument("dburl_from", help="The database you want to migrate.")
     parser.add_argument(
         "dburl_target", help="The database you want to use as the target."
@@ -283,6 +402,12 @@ def run(args, out=None, err=None):
         out = sys.stdout  # pragma: no cover
     if not err:
         err = sys.stderr  # pragma: no cover
+
+    if args.unsafe and out.isatty():
+        print(
+            "WARNING: --unsafe is deprecated. Use --force-destructive instead.",
+            file=err,
+        )
 
     args._original_from = args.dburl_from
     args._original_target = args.dburl_target
@@ -331,28 +456,67 @@ def _run_inner(args, out=None, err=None):
             exclude_schema=exclude_schema,
             ignore_extension_versions=args.ignore_extension_versions,
         )
-        if args.unsafe:
+        unsafe_or_force = args.unsafe or args.force_destructive
+        if unsafe_or_force:
             m.set_safety(False)
         if args.create_extensions_only:
             m.add_extension_changes(drops=False)
         else:
             m.add_all_changes(privileges=args.with_privileges)
+
+        # Post-processing: rename detection
+        statements = list(m.statements)
+        if not args.no_rename_detection:
+            auto_accept = args.rename_columns
+            statements = detect_column_renames(
+                statements, interactive=False, auto_accept=auto_accept
+            )
+
+        # Safe mode check: halt on destructive operations unless opted in
+        if not unsafe_or_force:
+            destructive = _check_for_destructive(statements)
+            if destructive:
+                print(
+                    "MigraDiff: Destructive operations detected."
+                    " Use --force-destructive to proceed.",
+                    file=err,
+                )
+                print(file=err)
+                print("Destructive operations found:", file=err)
+                print(_format_destructive_summary(destructive), file=err)
+                print(file=err)
+                print(
+                    "Review these carefully before applying to production.",
+                    file=err,
+                )
+                print(
+                    "Run with --force-destructive to generate the full migration script.",
+                    file=err,
+                )
+                return 1
+
+        # Build the migration SQL from (potentially modified) statements
+        from .statements import Statements
+
+        modified_statements = Statements(statements)
+        modified_statements.safe = not unsafe_or_force
+
         try:
-            if m.statements:
+            if statements:
                 if args.output == "json":
                     json_out = format_json_output(
-                        m.statements,
+                        statements,
                         getattr(args, "_original_from", args.dburl_from),
                         getattr(args, "_original_target", args.dburl_target),
                     )
                     print(json_out, file=out)
                 elif args.force_utf8:
-                    print(m.sql.encode("utf8"), file=out)
+                    print(modified_statements.sql.encode("utf8"), file=out)
                 else:
-                    print(m.sql, file=out)
+                    print(modified_statements.sql, file=out)
             elif args.output == "json":
                 json_out = format_json_output(
-                    m.statements,
+                    statements,
                     getattr(args, "_original_from", args.dburl_from),
                     getattr(args, "_original_target", args.dburl_target),
                 )
@@ -364,7 +528,7 @@ def _run_inner(args, out=None, err=None):
             )
             return 3
 
-        if not m.statements:
+        if not statements:
             return 0
 
         else:

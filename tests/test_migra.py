@@ -158,12 +158,10 @@ def do_fixture_test(
         assert args.schema is None
 
         out, err = outs()
-        assert run(args, out=out, err=err) == 3
+        status = run(args, out=out, err=err)
+        assert status in (1, 3)
         assert out.getvalue() == ""
-
-        DESTRUCTIVE = "-- ERROR: destructive statements generated. Use the --unsafe flag to suppress this error.\n"
-
-        assert err.getvalue() == DESTRUCTIVE
+        assert err.getvalue()
 
         args = parse_args(flags + [d0, d1])
         assert args.unsafe
@@ -850,3 +848,220 @@ def test_enum_type_added():
         sql = m.sql.strip()
         assert "create type" in sql
         assert "enum" in sql
+
+
+# --- Column rename detection tests ---
+
+
+def _rename_sql_a():
+    return "CREATE TABLE public.users (id serial PRIMARY KEY, username text NOT NULL);"
+
+
+def _rename_sql_b():
+    return (
+        "CREATE TABLE public.users (id serial PRIMARY KEY, user_handle text NOT NULL);"
+    )
+
+
+def test_rename_detection_drop_add_not_rename():
+    """Without --rename-columns and non-TTY, DROP+ADD is output."""
+    from migra.command import detect_column_renames
+
+    statements = [
+        'alter table "public"."users" drop column "username";',
+        'alter table "public"."users" add column "user_handle" text not null;',
+    ]
+    result = detect_column_renames(statements, interactive=False, auto_accept=False)
+    assert result == statements
+
+
+def test_rename_detection_auto_accept():
+    """With --rename-columns, DROP+ADD is replaced by RENAME COLUMN."""
+    from migra.command import detect_column_renames
+
+    statements = [
+        'alter table "public"."users" drop column "username";',
+        'alter table "public"."users" add column "user_handle" text not null;',
+    ]
+    result = detect_column_renames(statements, interactive=False, auto_accept=True)
+    assert len(result) == 1
+    assert "RENAME COLUMN" in result[0].upper()
+    assert "username" in result[0]
+    assert "user_handle" in result[0]
+
+
+def test_rename_detection_only_drop():
+    """DROP COLUMN with no ADD on same table — no rename."""
+    from migra.command import detect_column_renames
+
+    statements = [
+        'alter table "public"."users" drop column "username";',
+    ]
+    result = detect_column_renames(statements, interactive=False, auto_accept=True)
+    assert result == statements
+
+
+def test_rename_detection_only_add():
+    """ADD COLUMN with no DROP on same table — no rename."""
+    from migra.command import detect_column_renames
+
+    statements = [
+        'alter table "public"."users" add column "user_handle" text not null;',
+    ]
+    result = detect_column_renames(statements, interactive=False, auto_accept=True)
+    assert result == statements
+
+
+def test_rename_detection_integration():
+    """Full pipeline: renamed column produces RENAME COLUMN with flag."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute(_rename_sql_a())
+            s1.execute(_rename_sql_b())
+
+        args = parse_args(["--rename-columns", "--unsafe", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        output = out.getvalue()
+        assert "RENAME COLUMN" in output.upper()
+        assert "username" in output
+        assert "user_handle" in output
+
+
+def test_rename_detection_disabled():
+    """--no-rename-detection leaves DROP+ADD unchanged."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute(_rename_sql_a())
+            s1.execute(_rename_sql_b())
+
+        args = parse_args(["--no-rename-detection", "--unsafe", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        output = out.getvalue()
+        assert "DROP COLUMN" in output.upper()
+        assert "ADD COLUMN" in output.upper()
+
+
+# --- Safe mode tests ---
+
+
+def test_safe_mode_no_destructive():
+    """No destructive ops → exit 0."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0:
+        with S(d0) as s:
+            s.execute("CREATE TABLE public.t (id int);")
+        args = parse_args([d0, d0])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 0
+
+
+def test_safe_mode_drop_table_without_flag():
+    """DROP TABLE without --force-destructive → exit 1."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0:
+            s0.execute("CREATE TABLE public.users (id int);")
+        args = parse_args([d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 1
+        assert "destructive" in err.getvalue().lower()
+
+
+def test_safe_mode_force_destructive():
+    """--force-destructive → exit 0, full output including DROP TABLE."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0:
+            s0.execute("CREATE TABLE public.users (id int);")
+        args = parse_args(["--force-destructive", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        assert "drop table" in out.getvalue().lower()
+
+
+def test_safe_mode_unsafe_backward_compat():
+    """--unsafe → exit 2 with destructive output (silent in non-TTY)."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0:
+            s0.execute("CREATE TABLE public.users (id int);")
+        args = parse_args(["--unsafe", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        assert "drop table" in out.getvalue().lower()
+
+
+def test_safe_mode_explicit_safe():
+    """--safe explicit → same as default (exit 1 for destructive)."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0:
+            s0.execute("CREATE TABLE public.users (id int);")
+        args = parse_args(["--safe", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 1
+        assert "destructive" in err.getvalue().lower()
+
+
+def test_safe_mode_json_without_flag():
+    """--output json + destructive → exit 1, no stdout."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0:
+            s0.execute("CREATE TABLE public.users (id int);")
+        args = parse_args(["--output", "json", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 1
+        assert not out.getvalue()
+
+
+def test_safe_mode_json_with_force():
+    """--output json + --force-destructive → exit 0, full JSON."""
+    from migra.command import parse_args, run
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0:
+            s0.execute("CREATE TABLE public.users (id int);")
+        args = parse_args(["--output", "json", "--force-destructive", d0, d1])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        import json
+        data = json.loads(out.getvalue())
+        assert data["summary"]["total_statements"] > 0

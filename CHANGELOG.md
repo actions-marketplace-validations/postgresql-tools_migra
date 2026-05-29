@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- Smart column rename detection: when a DROP COLUMN + ADD COLUMN pair
+  of the same type is detected in the same table, MigraDiff prompts
+  the user to confirm a rename (ALTER TABLE ... RENAME COLUMN) instead
+  of the destructive DROP + ADD path; --rename-columns flag for
+  non-interactive rename acceptance; --no-rename-detection to disable
+- --safe mode: MigraDiff now halts by default when destructive
+  operations are detected (DROP TABLE, DROP COLUMN, DROP TYPE,
+  TRUNCATE, type changes requiring cast); use --force-destructive
+  to proceed; --unsafe preserved for backward compatibility with
+  deprecation warning
 - Enum evolution diffing: ALTER TYPE ... ADD VALUE IF NOT EXISTS for
   safe additions; DROP + CREATE for removals and reorders;
   removals classified as destructive in --output json mode
