@@ -240,3 +240,75 @@ def do_fixture_test(
         args = parse_args(flags + ["EMPTY", "EMPTY"])
         out, err = outs()
         assert run(args, out=out, err=err) == 0
+
+
+def test_from_file_valid():
+    import tempfile
+    import os
+
+    fixture_path = "tests/FIXTURES/enumdeps/"
+    with open(fixture_path + "a.sql") as f:
+        a_sql = f.read()
+    with open(fixture_path + "b.sql") as f:
+        b_sql = f.read()
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".sql", delete=False
+    ) as fa, tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as fb:
+        fa.write(a_sql)
+        fb.write(b_sql)
+        fa_path = fa.name
+        fb_path = fb.name
+
+    try:
+        args = parse_args(["--unsafe", "--from-file", fa_path, fb_path])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        output = out.getvalue().strip()
+        assert "drop view" in output
+        assert "create or replace view" in output
+    finally:
+        os.unlink(fa_path)
+        os.unlink(fb_path)
+
+
+def test_from_file_nonexistent():
+    args = parse_args(["--unsafe", "--from-file", "nonexistent_file.sql", "other.sql"])
+    out, err = io.StringIO(), io.StringIO()
+    status = run(args, out=out, err=err)
+    assert status == 1
+    assert "nonexistent_file.sql" in err.getvalue()
+
+
+def test_from_file_bad_sql():
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
+        f.write("this is not valid SQL;")
+        bad_path = f.name
+
+    try:
+        args = parse_args(["--unsafe", "--from-file", bad_path, bad_path])
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 1
+        assert "error" in err.getvalue().lower()
+    finally:
+        os.unlink(bad_path)
+
+
+def test_from_file_with_url():
+    args = parse_args(
+        [
+            "--unsafe",
+            "--from-file",
+            "postgresql://localhost/db_from",
+            "postgresql://localhost/db_target",
+        ]
+    )
+    out, err = io.StringIO(), io.StringIO()
+    status = run(args, out=out, err=err)
+    assert status == 1
+    assert "URL" in err.getvalue()

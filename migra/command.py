@@ -1,6 +1,7 @@
 from __future__ import print_function, unicode_literals
 
 import argparse
+import os
 import sys
 from contextlib import contextmanager
 
@@ -18,6 +19,20 @@ def arg_context(x):
 
         with S(x) as s:
             yield s
+
+
+@contextmanager
+def file_context(x, y):
+    from sqlbag import S, load_sql_from_file, temporary_database
+
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0:
+            load_sql_from_file(s0, x)
+        with S(d1) as s1:
+            load_sql_from_file(s1, y)
+        yield d0, d1
 
 
 def parse_args(args):
@@ -68,6 +83,13 @@ def parse_args(args):
         default=False,
         help="Force UTF-8 encoding for output",
     )
+    parser.add_argument(
+        "--from-file",
+        dest="from_file",
+        action="store_true",
+        default=False,
+        help="Treat dburl_from and dburl_target as pg_dump -s file paths",
+    )
     parser.add_argument("dburl_from", help="The database you want to migrate.")
     parser.add_argument(
         "dburl_target", help="The database you want to use as the target."
@@ -76,12 +98,47 @@ def parse_args(args):
 
 
 def run(args, out=None, err=None):
-    schema = args.schema
-    exclude_schema = args.exclude_schema
     if not out:
         out = sys.stdout  # pragma: no cover
     if not err:
         err = sys.stderr  # pragma: no cover
+
+    if args.from_file:
+        for path in [args.dburl_from, args.dburl_target]:
+            if "://" in path:
+                print(
+                    "ERROR: --from-file expects file paths, but got a URL. "
+                    "Drop --from-file to diff live databases.",
+                    file=err,
+                )
+                return 1
+            if not os.path.exists(path):
+                print(
+                    f"ERROR: file not found: {path}",
+                    file=err,
+                )
+                return 1
+        try:
+            with file_context(args.dburl_from, args.dburl_target) as (
+                d0_url,
+                d1_url,
+            ):
+                args.dburl_from = d0_url
+                args.dburl_target = d1_url
+                return _run_inner(args, out, err)
+        except Exception as e:
+            print(
+                f"ERROR: could not load SQL from files: {e}",
+                file=err,
+            )
+            return 1
+
+    return _run_inner(args, out, err)
+
+
+def _run_inner(args, out=None, err=None):
+    schema = args.schema
+    exclude_schema = args.exclude_schema
     with arg_context(args.dburl_from) as ac0, arg_context(args.dburl_target) as ac1:
         m = Migration(
             ac0,

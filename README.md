@@ -17,3 +17,9 @@ Version 3.0.1663481299 (from Sep 18, 2022) was the final release, and there will
     alter table "public"."products" add constraint "x" CHECK ((price > (0)::numeric));
 
 `migra` magically figured out all the statements required to get from A to B.
+
+### Diff schema dump files (no live database needed)
+
+    $ pg_dump -s postgres://db_production > schema_a.sql
+    $ pg_dump -s postgres://db_branch     > schema_b.sql
+    $ migra --from-file schema_a.sql schema_b.sql
