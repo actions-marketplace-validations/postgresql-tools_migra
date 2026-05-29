@@ -12,3 +12,6 @@
   a live database connection — no production credentials required
 - `.pre-commit-hooks.yaml`: pre-commit hook for local schema drift
   detection; example configuration in `pre-commit-config.example.yaml`
+- `--output json` mode: structured diff output with per-statement risk
+  classification (safe / warning / destructive) and summary metadata;
+  credentials redacted from connection string fields

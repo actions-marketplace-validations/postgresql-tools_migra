@@ -1,12 +1,137 @@
 from __future__ import print_function, unicode_literals
 
 import argparse
+import json
 import os
+import re
 import sys
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 from .migra import Migration
 from .statements import UnsafeMigrationException
+
+
+def _sql_type(sql):
+    words = sql.strip().upper().split()
+    if not words:
+        return "", ""
+    first = words[0]
+    if first == "CREATE" and len(words) > 1:
+        if words[1] == "OR" and len(words) > 3:
+            return f"{first} {words[3]}", words[3]
+        return f"{first} {words[1]}", words[1]
+    if first == "ALTER" and len(words) > 1:
+        return f"{first} {words[1]}", words[1]
+    if first == "DROP" and len(words) > 1:
+        second = words[1]
+        if second == "MATERIALIZED" and len(words) > 2:
+            return f"{first} {second} {words[2]}", words[2]
+        return f"{first} {second}", second
+    if first == "TRUNCATE":
+        return first, first
+    if first == "REVOKE":
+        return first, first
+    if first == "GRANT":
+        return first, first
+    return first, first
+
+
+def _extract_object_name(sql):
+    normalized = sql.strip().upper()
+    patterns = [
+        r"(?:CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?(?:\w+\s+)*(?:TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?|VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?|MATERIALIZED\s+VIEW\s+(?:IF\s+EXISTS\s+)?|FUNCTION\s+|SEQUENCE\s+|SCHEMA\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?|INDEX\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?|TRIGGER\s+|POLICY\s+|RULE\s+|TYPE\s+|DOMAIN\s+|EXTENSION\s+)(.+?)(?:\s|$)",
+        r"TRUNCATE\s+(?:TABLE\s+)?(.+?)(?:\s|$|;)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, normalized)
+        if m:
+            name = re.sub(r"[;(].*$", "", m.group(1).strip()).strip()
+            return _original_case(sql, name)
+    return ""
+
+
+def _original_case(original, uppercase_piece):
+    idx = original.strip().upper().find(uppercase_piece)
+    if idx >= 0:
+        return original.strip()[idx : idx + len(uppercase_piece)]
+    return uppercase_piece
+
+
+def classify_sql_statement(sql):
+    normalized = sql.strip().upper()
+    stmt_type, operation = _sql_type(sql)
+
+    m = re.match(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$", normalized)
+    if m:
+        name = _original_case(sql, m.group(1).strip())
+        return {"type": stmt_type, "operation": "DROP", "object": name, "risk": "destructive"}
+
+    m = re.match(r"ALTER\s+TABLE\s+(.+?)\s+DROP\s+(?:COLUMN\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$", normalized)
+    if m:
+        name = _original_case(sql, m.group(1).strip())
+        return {"type": stmt_type, "operation": "DROP COLUMN", "object": name, "risk": "destructive"}
+
+    m = re.match(r"TRUNCATE\s+(?:TABLE\s+)?(.+?);?\s*$", normalized)
+    if m:
+        name = _original_case(sql, m.group(1).strip())
+        return {"type": stmt_type, "operation": "TRUNCATE", "object": name, "risk": "destructive"}
+
+    m = re.match(r"ALTER\s+TABLE\s+(.+?)\s+RENAME\s+(?:TO\s+|COLUMN\s+|CONSTRAINT\s+)?(.+?);?\s*$", normalized)
+    if m:
+        name = _original_case(sql, m.group(1).strip())
+        return {"type": stmt_type, "operation": "RENAME", "object": name, "risk": "warning"}
+
+    obj = _extract_object_name(sql)
+    first_word = normalized.split()[0] if normalized.split() else ""
+    return {"type": stmt_type, "operation": first_word, "object": obj or "", "risk": "safe"}
+
+
+def redact_credentials(url):
+    return re.sub(r"://([^:@]+):([^@]+)@", r"://***:***@", url)
+
+
+def format_json_output(statements, source, target):
+    stmt_list = []
+    has_destructive = False
+    has_warning = False
+
+    for sql in statements:
+        info = classify_sql_statement(sql)
+        stmt_list.append({
+            "sql": sql,
+            "type": info["type"],
+            "operation": info["operation"],
+            "object": info["object"],
+            "risk": info["risk"],
+        })
+        if info["risk"] == "destructive":
+            has_destructive = True
+        elif info["risk"] == "warning":
+            has_warning = True
+
+    if has_destructive:
+        risk_level = "high"
+    elif has_warning:
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+
+    return json.dumps(
+        {
+            "version": "1.0",
+            "source": redact_credentials(source),
+            "target": redact_credentials(target),
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "summary": {
+                "total_statements": len(stmt_list),
+                "has_destructive_operations": has_destructive,
+                "risk_level": risk_level,
+            },
+            "statements": stmt_list,
+        },
+        indent=2,
+    )
 
 
 @contextmanager
@@ -90,6 +215,13 @@ def parse_args(args):
         default=False,
         help="Treat dburl_from and dburl_target as pg_dump -s file paths",
     )
+    parser.add_argument(
+        "--output",
+        dest="output",
+        default="sql",
+        choices=["sql", "json"],
+        help="Output format: plain SQL (default) or structured JSON",
+    )
     parser.add_argument("dburl_from", help="The database you want to migrate.")
     parser.add_argument(
         "dburl_target", help="The database you want to use as the target."
@@ -102,6 +234,9 @@ def run(args, out=None, err=None):
         out = sys.stdout  # pragma: no cover
     if not err:
         err = sys.stderr  # pragma: no cover
+
+    args._original_from = args.dburl_from
+    args._original_target = args.dburl_target
 
     if args.from_file:
         for path in [args.dburl_from, args.dburl_target]:
@@ -155,10 +290,24 @@ def _run_inner(args, out=None, err=None):
             m.add_all_changes(privileges=args.with_privileges)
         try:
             if m.statements:
-                if args.force_utf8:
+                if args.output == "json":
+                    json_out = format_json_output(
+                        m.statements,
+                        getattr(args, "_original_from", args.dburl_from),
+                        getattr(args, "_original_target", args.dburl_target),
+                    )
+                    print(json_out, file=out)
+                elif args.force_utf8:
                     print(m.sql.encode("utf8"), file=out)
                 else:
                     print(m.sql, file=out)
+            elif args.output == "json":
+                json_out = format_json_output(
+                    m.statements,
+                    getattr(args, "_original_from", args.dburl_from),
+                    getattr(args, "_original_target", args.dburl_target),
+                )
+                print(json_out, file=out)
         except UnsafeMigrationException:
             print(
                 "-- ERROR: destructive statements generated. Use the --unsafe flag to suppress this error.",
