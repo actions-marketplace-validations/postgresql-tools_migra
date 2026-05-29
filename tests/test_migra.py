@@ -686,3 +686,66 @@ def test_domain_added():
         m.add_all_changes()
         sql = m.sql.strip()
         assert "create domain" in sql
+
+
+# --- Materialized view dependency ordering tests ---
+
+
+def _mv_create_names(sql):
+    import re
+
+    names = []
+    for block in sql.strip().split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        first_line = block.split("\n")[0]
+        m = re.search(
+            r'CREATE MATERIALIZED VIEW\s+"([^"]+)"\."([^"]+)"',
+            first_line,
+            re.IGNORECASE,
+        )
+        if m:
+            names.append(m.group(2))
+    return names
+
+
+def test_mv_dependency_ordering_two_views():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute("CREATE TABLE public.users (id int, name text);")
+            s1.execute("CREATE TABLE public.users (id int, name text);")
+            s1.execute(
+                "CREATE MATERIALIZED VIEW public.base_view AS SELECT id FROM public.users;"
+            )
+            s1.execute(
+                "CREATE MATERIALIZED VIEW public.derived_view AS SELECT id FROM public.base_view;"
+            )
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        names = _mv_create_names(m.sql)
+        assert names == ["base_view", "derived_view"]
+
+
+def test_mv_dependency_ordering_chain():
+    with temporary_database(host="localhost") as d0, temporary_database(
+        host="localhost"
+    ) as d1:
+        with S(d0) as s0, S(d1) as s1:
+            s0.execute("CREATE TABLE public.users (id int, name text);")
+            s1.execute("CREATE TABLE public.users (id int, name text);")
+            s1.execute(
+                "CREATE MATERIALIZED VIEW public.a AS SELECT id FROM public.users;"
+            )
+            s1.execute("CREATE MATERIALIZED VIEW public.b AS SELECT id FROM public.a;")
+            s1.execute("CREATE MATERIALIZED VIEW public.c AS SELECT id FROM public.b;")
+
+        m = Migration(s0, s1)
+        m.set_safety(False)
+        m.add_all_changes()
+        names = _mv_create_names(m.sql)
+        assert names == ["a", "b", "c"]

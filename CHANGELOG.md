@@ -7,6 +7,11 @@
   changes; generates safe drop + create DDL
 - Domain diffing: detects constraint and base type changes
 
+### Fixed
+- Materialized view CREATE statements now generated in correct
+  dependency order via topological sort; circular dependencies
+  produce a clear error instead of incorrect output
+
 ### Changed
 - Pinned schemainspect==3.1.1663587362 for reproducible builds and
   test results (upgraded from 3.1.1663480743)
