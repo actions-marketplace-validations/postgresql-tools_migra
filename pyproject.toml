@@ -17,6 +17,7 @@ six = "*"
 # schemainspect = {path="../schemainspect", develop=true}
 schemainspect = ">=3.1.1663587362"
 psycopg2-binary = { version="*", optional = true }
+anthropic = { version = ">=0.20.0", optional = true }
 
 [tool.poetry.dev-dependencies]
 sqlbag = "*"
@@ -34,7 +35,7 @@ migra = 'migra:do_command'
 
 [tool.poetry.extras]
 pg = ["psycopg2-binary"]
-ai = ["anthropic>=0.20.0"]
+ai = ["anthropic"]
 
 [tool.isort]
 multi_line_output = 3
