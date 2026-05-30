@@ -4,6 +4,10 @@ description: >
   the migration diff as a pull request comment.
 author: MigraDiff
 
+branding:
+  icon: database
+  color: blue
+
 inputs:
   base_url:
     description: Connection string for the base (production) database
