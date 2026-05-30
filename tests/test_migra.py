@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import io
+import os
 from difflib import ndiff as difflib_diff
 
 import pytest
@@ -1063,5 +1064,222 @@ def test_safe_mode_json_with_force():
         status = run(args, out=out, err=err)
         assert status == 2
         import json
+
         data = json.loads(out.getvalue())
         assert data["summary"]["total_statements"] > 0
+
+
+# --- Migrations directory tests ---
+
+
+def _write_migration(dirpath, name, sql):
+    p = os.path.join(dirpath, name)
+    with open(p, "w") as f:
+        f.write(sql)
+    return p
+
+
+def test_migrations_dir_sorted_numeric():
+    from migra.command import discover_migration_files
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(td, "001_initial.sql", "CREATE TABLE public.t (id int);")
+        _write_migration(
+            td, "002_add_name.sql", "ALTER TABLE public.t ADD COLUMN name text;"
+        )
+        _write_migration(
+            td, "003_add_email.sql", "ALTER TABLE public.t ADD COLUMN email text;"
+        )
+        files = discover_migration_files(td)
+        assert len(files) == 3
+        assert "001" in files[0]
+        assert "002" in files[1]
+        assert "003" in files[2]
+
+
+def test_migrations_dir_sorted_timestamp():
+    from migra.command import discover_migration_files
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(td, "20240101_initial.sql", "CREATE TABLE public.t (id int);")
+        _write_migration(
+            td, "20240102_add_name.sql", "ALTER TABLE public.t ADD COLUMN name text;"
+        )
+        files = discover_migration_files(td)
+        assert len(files) == 2
+        assert "20240101" in files[0]
+        assert "20240102" in files[1]
+
+
+def test_migrations_dir_flyway_format():
+    from migra.command import discover_migration_files
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(td, "V1__initial.sql", "CREATE TABLE public.t (id int);")
+        _write_migration(
+            td, "V2__add_name.sql", "ALTER TABLE public.t ADD COLUMN name text;"
+        )
+        files = discover_migration_files(td)
+        assert len(files) == 2
+        assert "V1" in files[0]
+        assert "V2" in files[1]
+
+
+def test_migrations_dir_numeric_sort_not_lex():
+    from migra.command import discover_migration_files
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(td, "9.sql", "CREATE TABLE public.t (id int);")
+        _write_migration(td, "10.sql", "ALTER TABLE public.t ADD COLUMN name text;")
+        files = discover_migration_files(td)
+        assert len(files) == 2
+        assert "9.sql" in files[0]
+        assert "10.sql" in files[1]
+
+
+def test_migrations_dir_empty_directory():
+    from migra.command import discover_migration_files
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        with pytest.raises(ValueError, match="no .sql migration files"):
+            discover_migration_files(td)
+
+
+def test_migrations_dir_nonexistent_directory():
+    from migra.command import discover_migration_files
+
+    with pytest.raises(ValueError, match="migrations directory not found"):
+        discover_migration_files("/nonexistent/migrations")
+
+
+def test_migrations_dir_apply_and_diff():
+    from migra.command import parse_args, run
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(
+            td, "001_initial.sql", "CREATE TABLE public.users (id int, email text);"
+        )
+        with temporary_database(host="localhost") as d0:
+            with S(d0) as s0:
+                s0.execute("CREATE TABLE public.users (id int);")
+            args = parse_args(["--force-destructive", "--from-migrations-dir", td, d0])
+            out, err = io.StringIO(), io.StringIO()
+            status = run(args, out=out, err=err)
+            assert status == 2
+            output = out.getvalue().lower()
+            assert "add column" in output or "add" in output
+
+
+def test_migrations_dir_with_from_file():
+    from migra.command import parse_args, run
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        mig_dir = os.path.join(td, "migrations")
+        os.makedirs(mig_dir)
+        _write_migration(
+            mig_dir,
+            "001_add_table.sql",
+            "CREATE TABLE public.users (id int, email text);",
+        )
+        # Write the base schema to a separate file (not in migrations dir)
+        base_file = os.path.join(td, "base.sql")
+        with open(base_file, "w") as f:
+            f.write("CREATE TABLE public.users (id int);\n")
+
+        args = parse_args(
+            [
+                "--force-destructive",
+                "--from-migrations-dir",
+                mig_dir,
+                "--from-file",
+                base_file,
+            ]
+        )
+        out, err = io.StringIO(), io.StringIO()
+        status = run(args, out=out, err=err)
+        assert status == 2
+        output = out.getvalue().lower()
+        assert "add column" in output or "email" in output
+
+
+def test_migrations_dir_syntax_error():
+    from migra.command import parse_args, run
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(td, "001_bad.sql", "this is not valid sql;")
+        with temporary_database(host="localhost") as d0:
+            with S(d0) as s0:
+                s0.execute("CREATE TABLE public.users (id int);")
+            args = parse_args(["--force-destructive", "--from-migrations-dir", td, d0])
+            out, err = io.StringIO(), io.StringIO()
+            status = run(args, out=out, err=err)
+            assert status == 1
+            assert "Migration file failed" in err.getvalue()
+
+
+def test_migrations_dir_with_json():
+    from migra.command import parse_args, run
+
+    import tempfile
+    import json
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(
+            td, "001_init.sql", "CREATE TABLE public.users (id int, email text);"
+        )
+        with temporary_database(host="localhost") as d0:
+            with S(d0) as s0:
+                s0.execute("CREATE TABLE public.users (id int);")
+            args = parse_args(
+                [
+                    "--force-destructive",
+                    "--from-migrations-dir",
+                    td,
+                    d0,
+                    "--output",
+                    "json",
+                ]
+            )
+            out, err = io.StringIO(), io.StringIO()
+            status = run(args, out=out, err=err)
+            assert status == 2
+            data = json.loads(out.getvalue())
+            assert data["summary"]["total_statements"] > 0
+            assert data["target"] == td
+
+
+def test_migrations_dir_with_safe_mode():
+    from migra.command import parse_args, run
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        _write_migration(
+            td,
+            "001_init.sql",
+            "CREATE TABLE public.users (id int, email text); ALTER TABLE public.users DROP COLUMN email;",
+        )
+        with temporary_database(host="localhost") as d0:
+            with S(d0) as s0:
+                s0.execute("CREATE TABLE public.users (id int, email text);")
+            args = parse_args(["--from-migrations-dir", td, d0])
+            out, err = io.StringIO(), io.StringIO()
+            status = run(args, out=out, err=err)
+            assert status == 1
+            assert "destructive" in err.getvalue().lower()

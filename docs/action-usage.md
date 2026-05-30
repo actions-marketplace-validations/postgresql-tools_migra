@@ -28,6 +28,15 @@
     fail_on_destructive: "true"
 ```
 
+## Migrations Directory
+
+```yaml
+- uses: migradiff/migra@v1
+  with:
+    base_url: ${{ secrets.DB_PRODUCTION_URL }}
+    migrations_dir: ./supabase/migrations
+```
+
 ## JSON Output
 
 ```yaml

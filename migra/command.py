@@ -274,6 +274,97 @@ def _format_destructive_summary(statements):
     return "\n".join(lines)
 
 
+def _migration_sort_key(filename):
+    """Extract sort key from a migration filename."""
+    stem = filename.lower().replace(".sql", "")
+    m = re.match(r"v?(\d+).*", stem)
+    if m:
+        return int(m.group(1))
+    return 0
+
+
+def discover_migration_files(directory):
+    """Find and sort .sql migration files in a directory."""
+    if not os.path.isdir(directory):
+        raise ValueError(f"MigraDiff: migrations directory not found: {directory}")
+
+    sql_files = []
+    for f in os.listdir(directory):
+        if f.endswith(".sql"):
+            sql_files.append(f)
+
+    if not sql_files:
+        raise ValueError(f"MigraDiff: no .sql migration files found in: {directory}")
+
+    sql_files.sort(key=_migration_sort_key)
+    return [os.path.join(directory, f) for f in sql_files]
+
+
+def apply_migrations(directory):
+    """Apply migration files from a directory to a temporary database.
+    Returns the temporary database URL.
+    """
+    from sqlbag import S, temporary_database
+
+    files = discover_migration_files(directory)
+    temp_db = temporary_database(host="localhost")
+    db_url = temp_db.__enter__()
+    try:
+        with S(db_url) as s:
+            for f in files:
+                try:
+                    with open(f, "r") as fh:
+                        sql = fh.read()
+                    if sql.strip():
+                        s.execute(sql)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"MigraDiff: Migration file failed to apply:\n"
+                        f"  File: {os.path.basename(f)}\n"
+                        f"  Error: {e}\n"
+                        f"\nFix the migration file and retry."
+                    )
+        return db_url, temp_db
+    except Exception:
+        temp_db.__exit__(None, None, None)
+        raise
+
+
+@contextmanager
+def migrations_context(directory):
+    """Context manager that applies migrations to a temp DB and cleans up."""
+    from sqlbag import S, temporary_database
+
+    files = discover_migration_files(directory)
+    with temporary_database(host="localhost") as db_url:
+        with S(db_url) as s:
+            for f in files:
+                with open(f, "r") as fh:
+                    sql = fh.read()
+                if sql.strip():
+                    try:
+                        s.execute(sql)
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"MigraDiff: Migration file failed to apply:\n"
+                            f"  File: {os.path.basename(f)}\n"
+                            f"  Error: {e}\n"
+                            f"\nFix the migration file and retry."
+                        )
+        yield db_url
+
+
+@contextmanager
+def _single_file_context(filepath):
+    """Load a single SQL file into a temporary database."""
+    from sqlbag import S, load_sql_from_file, temporary_database
+
+    with temporary_database(host="localhost") as db_url:
+        with S(db_url) as s:
+            load_sql_from_file(s, filepath)
+        yield db_url
+
+
 @contextmanager
 def arg_context(x):
     if x == "EMPTY":
@@ -390,9 +481,17 @@ def parse_args(args):
         default=False,
         help="Explicit safe mode (default): halt on destructive operations",
     )
-    parser.add_argument("dburl_from", help="The database you want to migrate.")
     parser.add_argument(
-        "dburl_target", help="The database you want to use as the target."
+        "--from-migrations-dir",
+        dest="from_migrations_dir",
+        default=None,
+        help="Directory of numbered .sql migration files (applied in order)",
+    )
+    parser.add_argument(
+        "dburl_from", nargs="?", help="The database you want to migrate."
+    )
+    parser.add_argument(
+        "dburl_target", nargs="?", help="The database you want to use as the target."
     )
     return parser.parse_args(args)
 
@@ -403,6 +502,13 @@ def run(args, out=None, err=None):
     if not err:
         err = sys.stderr  # pragma: no cover
 
+    if not args.from_migrations_dir and not args.from_file and not args.dburl_from:
+        print(
+            "ERROR: A database URL or --from-file is required.",
+            file=err,
+        )
+        return 1
+
     if args.unsafe and out.isatty():
         print(
             "WARNING: --unsafe is deprecated. Use --force-destructive instead.",
@@ -411,6 +517,44 @@ def run(args, out=None, err=None):
 
     args._original_from = args.dburl_from
     args._original_target = args.dburl_target
+
+    if args.from_migrations_dir:
+        if not os.path.isdir(args.from_migrations_dir):
+            print(
+                f"ERROR: --from-migrations-dir directory not found: {args.from_migrations_dir}",
+                file=err,
+            )
+            return 1
+
+        try:
+            discover_migration_files(args.from_migrations_dir)
+        except ValueError as e:
+            print(str(e), file=err)
+            return 1
+
+        try:
+            if args.from_file:
+                with _single_file_context(args.dburl_from) as d0_url:
+                    with migrations_context(args.from_migrations_dir) as target_url:
+                        args.dburl_from = d0_url
+                        args.dburl_target = target_url
+                        args._original_target = args.from_migrations_dir
+                        return _run_inner(args, out, err)
+            elif args.dburl_from:
+                with migrations_context(args.from_migrations_dir) as target_url:
+                    args._original_target = args.from_migrations_dir
+                    args.dburl_target = target_url
+                    return _run_inner(args, out, err)
+        except RuntimeError as e:
+            print(str(e), file=err)
+            return 1
+        else:
+            print(
+                "ERROR: --from-migrations-dir requires a base schema source. "
+                "Provide a connection string or use --from-file.",
+                file=err,
+            )
+            return 1
 
     if args.from_file:
         for path in [args.dburl_from, args.dburl_target]:

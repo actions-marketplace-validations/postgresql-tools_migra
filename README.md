@@ -77,6 +77,17 @@ migra --from-file schema_a.sql schema_b.sql
 This is the recommended approach for CI pipelines and security-conscious
 environments — no production credentials required.
 
+### Migrations Directory (No Live Branch Database Required)
+
+If your target state is defined by a folder of migration files:
+
+```bash
+migra --from-migrations-dir ./migrations postgres://db_production
+```
+
+MigraDiff applies the migrations to an ephemeral database and diffs the
+result. Supports Supabase, Flyway, and standard numeric naming conventions.
+
 ### Scoped to a Schema
 
 ```bash

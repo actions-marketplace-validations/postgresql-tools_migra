@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
-_No changes staged yet._
+### Added
+- --from-migrations-dir mode: diff a directory of numbered migration
+  files against a base schema without requiring a live branch database;
+  supports Supabase timestamp format, Flyway versioned format, and
+  standard numeric prefixes; files applied in correct numeric sort order
 
 ---
 
