@@ -488,6 +488,26 @@ def parse_args(args):
         help="Directory of numbered .sql migration files (applied in order)",
     )
     parser.add_argument(
+        "--explain",
+        dest="explain",
+        action="store_true",
+        default=False,
+        help="Generate an AI-powered plain English explanation of the migration",
+    )
+    parser.add_argument(
+        "--api-key",
+        dest="api_key",
+        default=None,
+        help="Anthropic API key for --explain (overrides env var and config file)",
+    )
+    parser.add_argument(
+        "--setup-ai",
+        dest="setup_ai",
+        action="store_true",
+        default=False,
+        help="Interactively configure AI API key and save to config file",
+    )
+    parser.add_argument(
         "dburl_from", nargs="?", help="The database you want to migrate."
     )
     parser.add_argument(
@@ -501,6 +521,11 @@ def run(args, out=None, err=None):
         out = sys.stdout  # pragma: no cover
     if not err:
         err = sys.stderr  # pragma: no cover
+
+    if args.setup_ai:
+        from .ai_explain import setup_ai_interactive
+
+        return setup_ai_interactive(out, err)
 
     if not args.from_migrations_dir and not args.from_file and not args.dburl_from:
         print(
@@ -645,6 +670,55 @@ def _run_inner(args, out=None, err=None):
         modified_statements = Statements(statements)
         modified_statements.safe = not unsafe_or_force
 
+        # AI explanation support
+        explanation = None
+        if args.explain:
+            from .ai_explain import AIExplainer, resolve_api_key, redact_api_key
+
+            try:
+                import anthropic  # noqa: F401
+            except ImportError:
+                print(
+                    "MigraDiff: --explain requires the AI extras.",
+                    file=err,
+                )
+                print("Install with: pip install migradiff[ai]", file=err)
+                return 1
+
+            api_key = resolve_api_key(cli_key=args.api_key)
+            if not api_key:
+                print(
+                    "MigraDiff: --explain requires an Anthropic API key.",
+                    file=err,
+                )
+                print(file=err)
+                print("Set it up once with:", file=err)
+                print("  migra --setup-ai", file=err)
+                print(file=err)
+                print("Or set the environment variable:", file=err)
+                print("  export ANTHROPIC_API_KEY=sk-ant-...", file=err)
+                print(file=err)
+                print(
+                    "Get an API key at: https://console.anthropic.com",
+                    file=err,
+                )
+                return 1
+
+            if statements:
+                stmt_info = [classify_sql_statement(s) for s in statements]
+                explainer = AIExplainer(api_key)
+                try:
+                    explanation = explainer.explain(modified_statements.sql, stmt_info)
+                except RuntimeError as e:
+                    print(str(e), file=err)
+                    # Still print SQL, but don't have explanation
+                except Exception as e:
+                    msg = redact_api_key(str(e))
+                    print(
+                        "MigraDiff: AI explanation failed: {}".format(msg),
+                        file=err,
+                    )
+
         try:
             if statements:
                 if args.output == "json":
@@ -653,18 +727,48 @@ def _run_inner(args, out=None, err=None):
                         getattr(args, "_original_from", args.dburl_from),
                         getattr(args, "_original_target", args.dburl_target),
                     )
+                    if explanation:
+                        import json as json_mod
+
+                        data = json_mod.loads(json_out)
+                        data["explanation"] = {
+                            "text": explanation["text"],
+                            "model": explanation["model"],
+                            "generated_at": explanation["generated_at"],
+                        }
+                        json_out = json_mod.dumps(data, indent=2)
                     print(json_out, file=out)
                 elif args.force_utf8:
                     print(modified_statements.sql.encode("utf8"), file=out)
                 else:
                     print(modified_statements.sql, file=out)
+                if explanation and args.output != "json":
+                    print(file=out)
+                    print("--- AI Explanation ---", file=out)
+                    print(explanation["text"], file=out)
             elif args.output == "json":
                 json_out = format_json_output(
                     statements,
                     getattr(args, "_original_from", args.dburl_from),
                     getattr(args, "_original_target", args.dburl_target),
                 )
+                if explanation:
+                    import json as json_mod
+
+                    data = json_mod.loads(json_out)
+                    data["explanation"] = {
+                        "text": explanation["text"],
+                        "model": explanation["model"],
+                        "generated_at": explanation["generated_at"],
+                    }
+                    json_out = json_mod.dumps(data, indent=2)
                 print(json_out, file=out)
+            elif args.explain:
+                print("--- AI Explanation ---", file=out)
+                print(
+                    "No schema differences detected. The schemas are identical.",
+                    file=out,
+                )
         except UnsafeMigrationException:
             print(
                 "-- ERROR: destructive statements generated. Use the --unsafe flag to suppress this error.",

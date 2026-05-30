@@ -118,6 +118,53 @@ Output includes per-statement risk classification (`safe`, `warning`,
 
 ---
 
+## AI-Powered Explanation (Optional)
+
+MigraDiff can explain any migration in plain English — what each
+change does, what risks it carries, and safer alternatives for
+destructive operations.
+
+    migra --explain postgres://db_a postgres://db_b
+
+Output:
+
+    --- Migration SQL ---
+    ALTER TABLE public.users ADD COLUMN email text;
+    DROP TABLE public.legacy_sessions;
+
+    --- AI Explanation ---
+    This migration makes 2 changes to your database:
+
+    1. SAFE: Adds an email column (text) to the users table.
+       No existing data is affected.
+
+    2. ⚠ DESTRUCTIVE: Drops the legacy_sessions table entirely.
+       All data in this table will be permanently lost.
+       Consider archiving before dropping.
+
+    Overall risk: HIGH
+
+Powered by Claude (Anthropic). Bring your own API key — no data
+is sent to MigraDiff servers.
+
+### Setup
+
+Install the AI extras:
+
+    pip install migradiff[ai]
+
+Configure your API key once:
+
+    migra --setup-ai
+
+Or set the environment variable:
+
+    export ANTHROPIC_API_KEY=sk-ant-...
+
+Get an API key at https://console.anthropic.com
+
+---
+
 ## Development Setup
 
 The test suite requires a running PostgreSQL instance. The easiest
@@ -234,6 +281,7 @@ configuration options.
 | GitHub Action | None | `migradiff/migra-action` |
 | Pre-commit hook | None | `.pre-commit-hooks.yaml` |
 | Dev environment | Manual Docker commands | `docker compose up -d` |
+| AI explanation | None | `--explain` flag with Claude — plain English diff explanation, risk analysis, safer alternatives |
 
 See [CHANGELOG.md](CHANGELOG.md) for the full fix history.
 

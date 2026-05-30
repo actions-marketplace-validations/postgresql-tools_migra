@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- --explain flag: AI-powered plain English explanation of any
+  migration diff, powered by Claude (Anthropic); identifies risks
+  and suggests safer alternatives for destructive operations;
+  entirely optional — requires pip install migradiff[ai] and an
+  Anthropic API key; no data sent to MigraDiff servers
+- --setup-ai command: interactive API key setup stored securely
+  in ~/.migradiff/config.json (chmod 600); supports CLI flag,
+  environment variable, and config file key resolution
 - --from-migrations-dir mode: diff a directory of numbered migration
   files against a base schema without requiring a live branch database;
   supports Supabase timestamp format, Flyway versioned format, and
