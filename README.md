@@ -315,6 +315,14 @@ pytest
 
 ---
 
+## Enterprise
+
+MigraDiff is MIT licensed. If you are building a commercial product
+on top of MigraDiff, we'd love to hear from you —
+enterprise@Lateos.ai
+
+---
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
