@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-30
+
 ### Added
 - --explain flag: AI-powered plain English explanation of any
   migration diff, powered by Claude (Anthropic); identifies risks
