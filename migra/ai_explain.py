@@ -139,6 +139,550 @@ class AIExplainer:
             raise RuntimeError("MigraDiff: AI explanation failed: {}".format(msg))
 
 
+ROLLBACK_SYSTEM_PROMPT = (
+    "You are a PostgreSQL database expert specializing in migration"
+    " rollbacks. Given a SQL migration script, generate the exact reverse"
+    " migration. For each statement, output the SQL that undoes it.\n"
+    "\n"
+    "Rules:\n"
+    "1. Reverse statements in reverse order (last statement rolled back first)\n"
+    "2. For DROP TABLE, reconstruct CREATE TABLE from the schema context provided\n"
+    "3. For DROP COLUMN, reconstruct ADD COLUMN with exact type from schema context\n"
+    "4. For non-reversible operations (TRUNCATE, UPDATE, DELETE), output a"
+    " comment explaining why\n"
+    "5. Add a WARNING comment for any AI-reconstructed DDL\n"
+    "6. Output only valid PostgreSQL SQL and comments\n"
+    "7. Never add explanatory prose \u2014 only SQL and SQL comments"
+)
+
+ROLLBACK_MAX_TOKENS = 2048
+
+
+def build_rollback_prompt(migration_sql, source_schema_context=None):
+    schema_ctx = (
+        source_schema_context
+        if source_schema_context
+        else "No schema context available."
+    )
+    user_prompt = (
+        "Migration to reverse:\n\n"
+        "{migration_sql}\n\n"
+        "Source schema context (before migration was applied):\n"
+        "{source_schema_context}\n\n"
+        "Generate the complete rollback migration in reverse order."
+    )
+    return user_prompt.format(
+        migration_sql=migration_sql,
+        source_schema_context=schema_ctx,
+    )
+
+
+def _split_statements(sql_text):
+    """Split SQL text into individual statements, preserving comments."""
+    if not sql_text or not sql_text.strip():
+        return []
+    stmts = []
+    current = []
+    for line in sql_text.split("\n"):
+        stripped = line.strip()
+        current.append(line)
+        if stripped and not stripped.startswith("--") and stripped.endswith(";"):
+            stmts.append("\n".join(current).strip())
+            current = []
+    remainder = "\n".join(current).strip()
+    if remainder:
+        stmts.append(remainder)
+    return stmts
+
+
+def _is_non_reversible(stmt):
+    upper = stmt.strip().upper()
+    if upper.startswith("TRUNCATE"):
+        return True
+    if upper.startswith("UPDATE") and "WHERE" not in upper:
+        return True
+    if upper.startswith("DELETE") and "WHERE" not in upper:
+        return True
+    return False
+
+
+def generate_deterministic_rollback(sql_text):
+    """Generate deterministic rollbacks for safe reversible operations.
+
+    Returns a tuple (rollback_sql, needs_ai_statements) where
+    needs_ai_statements contains statements that require AI assistance
+    (DROP TABLE, DROP COLUMN, etc.).
+    """
+    if not sql_text or not sql_text.strip():
+        return "", []
+
+    stmts = _split_statements(sql_text)
+    if not stmts:
+        return "", []
+
+    rollback_parts = []
+    needs_ai = []
+
+    for stmt in reversed(stmts):
+        upper = stmt.strip().upper()
+
+        if _is_non_reversible(stmt):
+            rollback_parts.append("-- CANNOT ROLLBACK: {}".format(stmt.strip()))
+            rollback_parts.append(
+                "-- Data has been permanently deleted. Restore from backup."
+            )
+            continue
+
+        # ADD CONSTRAINT -> DROP CONSTRAINT (must come before ADD COLUMN)
+        m = re.match(
+            r"ALTER\s+TABLE\s+(.+?)\s+ADD\s+CONSTRAINT\s+(\S+?)(?:\s|;|$)",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            table = m.group(1).strip()
+            constraint = m.group(2).strip().strip('"')
+            rollback_parts.append(
+                'ALTER TABLE {} DROP CONSTRAINT IF EXISTS "{}";'.format(
+                    table, constraint
+                )
+            )
+            continue
+
+        # ADD COLUMN -> DROP COLUMN
+        m = re.match(
+            r"ALTER\s+TABLE\s+(.+?)\s+ADD\s+(?:COLUMN\s+)?(.+?)(?:\s|;|$)",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            table = m.group(1).strip()
+            col_name_match = re.match(r'(?:"([^"]+)"|(\w+))', m.group(2).strip())
+            if col_name_match:
+                col_name = col_name_match.group(1) or col_name_match.group(2)
+                rollback_parts.append(
+                    'ALTER TABLE {} DROP COLUMN "{}";'.format(table, col_name)
+                )
+                continue
+
+        # CREATE INDEX -> DROP INDEX
+        m = re.match(
+            r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s+ON\s+",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            idx_name = m.group(1).strip().strip('"')
+            rollback_parts.append('DROP INDEX IF EXISTS "{}";'.format(idx_name))
+            continue
+
+        # CREATE TYPE ... AS ENUM -> DROP TYPE
+        m = re.match(
+            r"CREATE\s+TYPE\s+(.+?)\s+AS\s+ENUM\s*\(",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            type_name = m.group(1).strip().strip('"')
+            rollback_parts.append('DROP TYPE IF EXISTS "{}";'.format(type_name))
+            continue
+
+        # RENAME COLUMN a TO b -> RENAME COLUMN b TO a
+        m = re.match(
+            r"ALTER\s+TABLE\s+(.+?)\s+RENAME\s+(?:COLUMN\s+)?([^;\s]+)\s+TO\s+([^;\s]+)",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            table = m.group(1).strip()
+            old_name = m.group(2).strip().strip('"')
+            new_name = m.group(3).strip().strip('"')
+            rollback_parts.append(
+                'ALTER TABLE {} RENAME COLUMN "{}" TO "{}";'.format(
+                    table, new_name, old_name
+                )
+            )
+            continue
+
+        # CREATE SCHEMA -> DROP SCHEMA
+        m = re.match(
+            r"CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)(?:\s|;|$)",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            schema_name = m.group(1).strip().strip('"')
+            rollback_parts.append('DROP SCHEMA IF EXISTS "{}";'.format(schema_name))
+            continue
+
+        # ALTER ... SET DEFAULT -> ALTER ... DROP DEFAULT
+        m = re.match(
+            r"ALTER\s+TABLE\s+(.+?)\s+ALTER\s+(?:COLUMN\s+)?(\S+)\s+SET\s+DEFAULT",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            table = m.group(1).strip()
+            col = m.group(2).strip().strip('"')
+            rollback_parts.append(
+                'ALTER TABLE {} ALTER COLUMN "{}" DROP DEFAULT;'.format(table, col)
+            )
+            continue
+
+        # ALTER COLUMN ... TYPE -> needs AI for old type
+        m = re.match(
+            r"ALTER\s+TABLE\s+(.+?)\s+ALTER\s+(?:COLUMN\s+)?(.+?)\s+TYPE\s+",
+            stmt.strip(),
+            re.IGNORECASE,
+        )
+        if m:
+            needs_ai.append(stmt)
+            continue
+
+        # DROP TABLE / DROP COLUMN / DROP TYPE -> needs AI
+        upper_no_comment = re.sub(r"--.*$", "", upper).strip()
+        if re.match(r"DROP\s+TABLE", upper_no_comment):
+            needs_ai.append(stmt)
+            continue
+        if re.match(r"ALTER\s+TABLE.*DROP\s+(?:COLUMN\s+)?", upper_no_comment):
+            needs_ai.append(stmt)
+            continue
+        if re.match(r"DROP\s+TYPE", upper_no_comment):
+            needs_ai.append(stmt)
+            continue
+
+        # Unknown statement — include as-is with a warning
+        rollback_parts.append(
+            "-- WARNING: Cannot determine rollback for:\n-- {}".format(stmt.strip())
+        )
+
+    return "\n\n".join(rollback_parts), needs_ai
+
+
+def extract_drop_references(sql_text):
+    """Extract object names referenced in DROP statements."""
+    refs = {"tables": [], "columns": [], "types": []}
+    if not sql_text:
+        return refs
+
+    for stmt in _split_statements(sql_text):
+        upper = stmt.strip().upper()
+
+        m = re.match(
+            r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$",
+            upper,
+        )
+        if m:
+            refs["tables"].append(m.group(1).strip())
+
+        m = re.match(
+            r"ALTER\s+TABLE\s+(.+?)\s+DROP\s+(?:COLUMN\s+)?(.+?)(?:\s+CASCADE|\s+RESTRICT)?;?\s*$",
+            upper,
+        )
+        if m:
+            table = m.group(1).strip()
+            col = m.group(2).strip()
+            refs["columns"].append({"table": table, "column": col})
+
+        m = re.match(
+            r"DROP\s+TYPE\s+(?:IF\s+EXISTS\s+)?(.+?);?\s*$",
+            upper,
+        )
+        if m:
+            refs["types"].append(m.group(1).strip())
+
+    return refs
+
+
+def extract_schema_context(conn_url, referenced_objects):
+    """Extract DDL for objects referenced in DROP statements from a live database."""
+    if not referenced_objects or (
+        not referenced_objects["tables"]
+        and not referenced_objects["columns"]
+        and not referenced_objects["types"]
+    ):
+        return ""
+
+    context_parts = []
+
+    try:
+        from sqlbag import S
+    except ImportError:
+        return "-- Schema context extraction requires sqlbag"
+
+    try:
+        with S(conn_url) as s:
+            for table in referenced_objects.get("tables", []):
+                schema = "public"
+                tbl = table
+                if "." in table:
+                    schema, tbl = table.split(".", 1)
+                tbl = tbl.strip('"')
+                schema = schema.strip('"')
+
+                # Get column definitions
+                rows = s.execute(
+                    """
+                    SELECT column_name, data_type, character_maximum_length,
+                           is_nullable, column_default
+                    FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = %s
+                    ORDER BY ordinal_position
+                """,
+                    (schema, tbl),
+                )
+                cols = rows.fetchall() if hasattr(rows, "fetchall") else list(rows)
+
+                if cols:
+                    col_defs = []
+                    for col in cols:
+                        col_name, dtype, char_len, nullable, default = col
+                        col_sql = '    "{}" {}'.format(col_name, dtype)
+                        if char_len:
+                            col_sql += "({})".format(char_len)
+                        if default:
+                            col_sql += " DEFAULT {}".format(default)
+                        if nullable == "NO":
+                            col_sql += " NOT NULL"
+                        col_defs.append(col_sql)
+
+                    table_ddl = "CREATE TABLE {}.{} (\n{}\n);".format(
+                        schema, tbl, "\n".join(col_defs)
+                    )
+                    context_parts.append(
+                        "-- Original definition of {}.{}:\n{}".format(
+                            schema, tbl, table_ddl
+                        )
+                    )
+                else:
+                    context_parts.append(
+                        "-- WARNING: Table {}.{} not found in source schema".format(
+                            schema, tbl
+                        )
+                    )
+
+            for col_ref in referenced_objects.get("columns", []):
+                table = col_ref["table"]
+                col = col_ref["column"]
+                schema = "public"
+                tbl = table
+                if "." in table:
+                    schema, tbl = table.split(".", 1)
+                tbl = tbl.strip('"')
+                col = col.strip('"')
+                schema = schema.strip('"')
+
+                rows = s.execute(
+                    """
+                    SELECT data_type, character_maximum_length,
+                           is_nullable, column_default
+                    FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = %s AND column_name = %s
+                """,
+                    (schema, tbl, col),
+                )
+                info = rows.fetchone() if hasattr(rows, "fetchone") else None
+                if info:
+                    dtype, char_len, nullable, default = info
+                    col_sql = '    "{}" {}'.format(col, dtype)
+                    if char_len:
+                        col_sql += "({})".format(char_len)
+                    if default:
+                        col_sql += " DEFAULT {}".format(default)
+                    if nullable == "NO":
+                        col_sql += " NOT NULL"
+                    context_parts.append(
+                        "-- Original column {}.{}: \n{}".format(tbl, col, col_sql)
+                    )
+                else:
+                    context_parts.append(
+                        "-- WARNING: Column {}.{} not found in source schema".format(
+                            tbl, col
+                        )
+                    )
+
+            for type_name in referenced_objects.get("types", []):
+                schema = "public"
+                typ = type_name
+                if "." in type_name:
+                    schema, typ = type_name.split(".", 1)
+                typ = typ.strip('"')
+                schema = schema.strip('"')
+
+                rows = s.execute(
+                    """
+                    SELECT e.enumlabel
+                    FROM pg_type t
+                    JOIN pg_enum e ON t.oid = e.enumtypid
+                    JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
+                    WHERE n.nspname = %s AND t.typname = %s
+                    ORDER BY e.enumsortorder
+                """,
+                    (schema, typ),
+                )
+                enum_labels = [r[0] for r in rows] if hasattr(rows, "__iter__") else []
+                if enum_labels:
+                    enum_vals = ",\n".join(
+                        "    '{}'".format(val) for val in enum_labels
+                    )
+                    context_parts.append(
+                        "-- Original type {}.{}:\nCREATE TYPE {}.{} AS ENUM (\n{}\n);".format(
+                            schema, typ, schema, typ, enum_vals
+                        )
+                    )
+                else:
+                    context_parts.append(
+                        "-- WARNING: Type {}.{} not found in source schema".format(
+                            schema, typ
+                        )
+                    )
+
+    except Exception as e:
+        context_parts.append(
+            "-- WARNING: Failed to extract schema context: {}".format(e)
+        )
+
+    return "\n\n".join(context_parts)
+
+
+class AIRollback:
+    def __init__(self, api_key):
+        self.api_key = api_key
+
+    def generate_rollback(self, migration_sql, source_schema_context=None):
+        from datetime import datetime, timezone
+
+        import anthropic
+
+        # First pass: deterministic rollback
+        deterministic_sql, needs_ai_stmts = generate_deterministic_rollback(
+            migration_sql
+        )
+
+        # If nothing to roll back
+        if not migration_sql or not migration_sql.strip():
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return {"text": "", "model": "", "generated_at": timestamp}
+
+        # If all statements handled deterministically, return
+        if not needs_ai_stmts and deterministic_sql.strip():
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return {
+                "text": self._format_rollback_output(
+                    migration_sql, deterministic_sql, timestamp
+                ),
+                "model": "deterministic",
+                "generated_at": timestamp,
+            }
+
+        # If we have statements needing AI assistance, call Anthropic
+        ai_sql_text = "\n".join(needs_ai_stmts) if needs_ai_stmts else migration_sql
+        ai_context = source_schema_context or ""
+
+        user_prompt = build_rollback_prompt(ai_sql_text, ai_context)
+
+        client = anthropic.Anthropic(api_key=self.api_key)
+        try:
+            response = client.messages.create(
+                model=DEFAULT_MODEL,
+                max_tokens=ROLLBACK_MAX_TOKENS,
+                temperature=TEMPERATURE,
+                system=ROLLBACK_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            ai_text = response.content[0].text
+
+            # Combine deterministic + AI rollback
+            if deterministic_sql.strip() and ai_text.strip():
+                combined = deterministic_sql + "\n\n" + ai_text
+            elif ai_text.strip():
+                combined = ai_text
+            else:
+                combined = deterministic_sql
+
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return {
+                "text": self._format_rollback_output(
+                    migration_sql, combined, timestamp
+                ),
+                "model": DEFAULT_MODEL,
+                "generated_at": timestamp,
+            }
+        except Exception as e:
+            msg = redact_api_key(str(e))
+            raise RuntimeError("MigraDiff: AI rollback failed: {}".format(msg))
+
+    def _format_rollback_output(self, original_sql, rollback_sql, timestamp):
+        parts = []
+        parts.append("--- Original Migration ---")
+        parts.append(original_sql.strip())
+        parts.append("")
+        parts.append("--- Rollback Migration ---")
+        parts.append("-- Generated by MigraDiff AI")
+        parts.append("-- WARNING: Review carefully before applying to production")
+        parts.append("-- Rollback generated at: {}".format(timestamp))
+        parts.append("")
+        if rollback_sql and rollback_sql.strip():
+            parts.append(rollback_sql.strip())
+        else:
+            parts.append("-- Nothing to roll back")
+        return "\n".join(parts)
+
+
+def generate_file_rollback(filepath, api_key=None):
+    """Generate rollback for a migration file without schema context."""
+    if not os.path.exists(filepath):
+        raise ValueError("MigraDiff: File not found: {}".format(filepath))
+
+    with open(filepath, "r") as f:
+        sql = f.read()
+
+    if not sql.strip():
+        return {"text": "Nothing to roll back", "model": "", "generated_at": ""}
+
+    # Try deterministic first
+    deterministic_sql, needs_ai_stmts = generate_deterministic_rollback(sql)
+
+    # If AI-only statements (DROP TABLE/COLUMN) are present, add warnings
+    if needs_ai_stmts:
+        warning_lines = [
+            "-- WARNING: DROP TABLE reversal requires original schema context",
+            "-- Run: migra --rollback <connection_string> {}".format(
+                os.path.basename(filepath)
+            ),
+            "-- to generate a complete rollback with schema reconstruction",
+        ]
+        for stmt in needs_ai_stmts:
+            warning_lines.append("-- CANNOT fully reverse: {}".format(stmt.strip()))
+
+        # If nothing deterministically reversible either
+        if not deterministic_sql.strip():
+            result = "\n".join(warning_lines)
+        else:
+            result = deterministic_sql + "\n\n" + "\n".join(warning_lines)
+
+        from datetime import datetime, timezone
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return {
+            "text": result,
+            "model": "",
+            "generated_at": timestamp,
+        }
+
+    if not deterministic_sql.strip():
+        return {"text": "Nothing to roll back", "model": "", "generated_at": ""}
+
+    from datetime import datetime, timezone
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "text": deterministic_sql,
+        "model": "deterministic",
+        "generated_at": timestamp,
+    }
+
+
 def setup_ai_interactive(out, err):
     key = None
     try:

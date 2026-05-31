@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- --rollback flag: AI-generated reverse migration for any diff
+  or migration file; deterministic reversals for safe operations
+  (ADD COLUMN, CREATE INDEX, RENAME COLUMN); AI-reconstructed DDL
+  for DROP TABLE and DROP COLUMN using source schema context;
+  non-reversible operations (TRUNCATE) flagged explicitly;
+  combinable with --explain and --output json
+
 ## [1.3.0] - 2026-05-30
 
 ### Added

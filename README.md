@@ -163,6 +163,24 @@ Or set the environment variable:
 
 Get an API key at https://console.anthropic.com
 
+### AI Rollback Generation (--rollback)
+
+Generate the exact reverse migration — the SQL needed to undo
+any migration:
+
+    migra --rollback migration.sql
+    migra --rollback postgres://db_a postgres://db_b
+
+MigraDiff uses your source schema context to reconstruct DROP
+TABLE and DROP COLUMN reversals accurately. Non-reversible
+operations (TRUNCATE, bulk DELETE) are flagged explicitly.
+
+Combine with --explain for a complete picture:
+
+    migra --explain --rollback postgres://db_a postgres://db_b
+
+Requires `pip install migradiff[ai]` and an Anthropic API key.
+
 ---
 
 ## Development Setup

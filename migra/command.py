@@ -508,6 +508,15 @@ def parse_args(args):
         help="Interactively configure AI API key and save to config file",
     )
     parser.add_argument(
+        "--rollback",
+        dest="rollback",
+        nargs="?",
+        const=True,
+        default=False,
+        help="Generate the reverse migration (rollback). Optionally accepts a"
+        " migration SQL file path.",
+    )
+    parser.add_argument(
         "dburl_from", nargs="?", help="The database you want to migrate."
     )
     parser.add_argument(
@@ -526,6 +535,15 @@ def run(args, out=None, err=None):
         from .ai_explain import setup_ai_interactive
 
         return setup_ai_interactive(out, err)
+
+    # Rollback mode with file (no connection strings needed)
+    if args.rollback and isinstance(args.rollback, str):
+        from .ai_explain import generate_file_rollback
+
+        result = generate_file_rollback(args.rollback)
+        if result["text"]:
+            print(result["text"], file=out)
+        return 0
 
     if not args.from_migrations_dir and not args.from_file and not args.dburl_from:
         print(
@@ -672,6 +690,7 @@ def _run_inner(args, out=None, err=None):
 
         # AI explanation support
         explanation = None
+        rollback_result = None
         if args.explain:
             from .ai_explain import AIExplainer, resolve_api_key, redact_api_key
 
@@ -719,6 +738,67 @@ def _run_inner(args, out=None, err=None):
                         file=err,
                     )
 
+        # AI rollback generation
+        if args.rollback:
+            from .ai_explain import AIRollback, resolve_api_key, redact_api_key
+
+            try:
+                import anthropic  # noqa: F401, F811
+            except ImportError:
+                print(
+                    "MigraDiff: --rollback requires the AI extras.",
+                    file=err,
+                )
+                print("Install with: pip install migradiff[ai]", file=err)
+                return 1
+
+            api_key = resolve_api_key(cli_key=args.api_key)
+            if not api_key:
+                print(
+                    "MigraDiff: --rollback requires an Anthropic API key.",
+                    file=err,
+                )
+                print(file=err)
+                print("Set it up once with:", file=err)
+                print("  migra --setup-ai", file=err)
+                print(file=err)
+                print("Or set the environment variable:", file=err)
+                print("  export ANTHROPIC_API_KEY=sk-ant-...", file=err)
+                print(file=err)
+                print(
+                    "Get an API key at: https://console.anthropic.com",
+                    file=err,
+                )
+                return 1
+
+            if statements:
+                from .ai_explain import extract_drop_references, extract_schema_context
+
+                rollback_sql = modified_statements.sql
+                refs = extract_drop_references(rollback_sql)
+                schema_context = ""
+                if any(refs.values()) and args.dburl_from:
+                    try:
+                        schema_context = extract_schema_context(args.dburl_from, refs)
+                    except Exception as e:
+                        schema_context = (
+                            "-- WARNING: Could not extract schema context: {}".format(e)
+                        )
+
+                rollbacker = AIRollback(api_key)
+                try:
+                    rollback_result = rollbacker.generate_rollback(
+                        rollback_sql, schema_context
+                    )
+                except RuntimeError as e:
+                    print(str(e), file=err)
+                except Exception as e:
+                    msg = redact_api_key(str(e))
+                    print(
+                        "MigraDiff: AI rollback failed: {}".format(msg),
+                        file=err,
+                    )
+
         try:
             if statements:
                 if args.output == "json":
@@ -737,6 +817,16 @@ def _run_inner(args, out=None, err=None):
                             "generated_at": explanation["generated_at"],
                         }
                         json_out = json_mod.dumps(data, indent=2)
+                    if rollback_result:
+                        import json as json_mod
+
+                        data = json_mod.loads(json_out)
+                        data["rollback"] = {
+                            "text": rollback_result["text"],
+                            "model": rollback_result["model"],
+                            "generated_at": rollback_result["generated_at"],
+                        }
+                        json_out = json_mod.dumps(data, indent=2)
                     print(json_out, file=out)
                 elif args.force_utf8:
                     print(modified_statements.sql.encode("utf8"), file=out)
@@ -746,6 +836,9 @@ def _run_inner(args, out=None, err=None):
                     print(file=out)
                     print("--- AI Explanation ---", file=out)
                     print(explanation["text"], file=out)
+                if rollback_result and args.output != "json":
+                    print(file=out)
+                    print(rollback_result["text"], file=out)
             elif args.output == "json":
                 json_out = format_json_output(
                     statements,
@@ -762,9 +855,22 @@ def _run_inner(args, out=None, err=None):
                         "generated_at": explanation["generated_at"],
                     }
                     json_out = json_mod.dumps(data, indent=2)
+                if rollback_result:
+                    import json as json_mod
+
+                    data = json_mod.loads(json_out)
+                    data["rollback"] = {
+                        "text": rollback_result["text"],
+                        "model": rollback_result["model"],
+                        "generated_at": rollback_result["generated_at"],
+                    }
+                    json_out = json_mod.dumps(data, indent=2)
                 print(json_out, file=out)
-            elif args.explain:
-                print("--- AI Explanation ---", file=out)
+            elif args.explain or args.rollback:
+                if args.explain:
+                    print("--- AI Explanation ---", file=out)
+                if args.rollback:
+                    print("--- Rollback ---", file=out)
                 print(
                     "No schema differences detected. The schemas are identical.",
                     file=out,
