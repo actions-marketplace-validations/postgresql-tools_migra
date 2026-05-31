@@ -181,6 +181,26 @@ Combine with --explain for a complete picture:
 
 Requires `pip install migradiff[ai]` and an Anthropic API key.
 
+### AI Performance Advisor (--advise)
+
+Before applying any migration, get a performance risk assessment
+— locking behavior, table rewrite risk, and zero-downtime
+alternatives:
+
+    migra --advise postgres://db_a postgres://db_b
+    migra --advise migration.sql
+
+MigraDiff analyzes each statement for PostgreSQL-specific risks:
+table locks, full rewrites, irreversible data loss. When a live
+connection is provided, table row counts are used to estimate
+lock duration at your actual data scale.
+
+Combine all three AI features for a complete picture:
+
+    migra --explain --advise --rollback postgres://db_a postgres://db_b
+
+Requires pip install migradiff[ai] and an Anthropic API key.
+
 ---
 
 ## Development Setup

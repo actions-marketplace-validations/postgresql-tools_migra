@@ -517,6 +517,13 @@ def parse_args(args):
         " migration SQL file path.",
     )
     parser.add_argument(
+        "--advise",
+        dest="advise",
+        action="store_true",
+        default=False,
+        help="Generate an AI-powered performance risk assessment of the migration",
+    )
+    parser.add_argument(
         "dburl_from", nargs="?", help="The database you want to migrate."
     )
     parser.add_argument(
@@ -544,6 +551,39 @@ def run(args, out=None, err=None):
         if result["text"]:
             print(result["text"], file=out)
         return 0
+
+    # Advise mode with file (no connection strings needed)
+    if (
+        args.advise
+        and args.dburl_from
+        and not args.from_file
+        and not args.from_migrations_dir
+    ):
+        filepath = args.dburl_from
+        if os.path.exists(filepath) and filepath.endswith(".sql"):
+            from .ai_explain import resolve_api_key
+
+            api_key = resolve_api_key(cli_key=args.api_key)
+            if not api_key:
+                print(
+                    "MigraDiff: --advise requires an Anthropic API key.",
+                    file=err,
+                )
+                print(file=err)
+                print("Set it up once with:", file=err)
+                print("  migra --setup-ai", file=err)
+                print(file=err)
+                print("Or set the environment variable:", file=err)
+                print("  export ANTHROPIC_API_KEY=sk-ant-...", file=err)
+                print(file=err)
+                return 1
+
+            from .ai_explain import generate_file_advisory
+
+            result = generate_file_advisory(filepath, api_key=api_key)
+            if result["text"]:
+                print(result["text"], file=out)
+            return 0
 
     if not args.from_migrations_dir and not args.from_file and not args.dburl_from:
         print(
@@ -691,6 +731,7 @@ def _run_inner(args, out=None, err=None):
         # AI explanation support
         explanation = None
         rollback_result = None
+        advisory_result = None
         if args.explain:
             from .ai_explain import AIExplainer, resolve_api_key, redact_api_key
 
@@ -799,6 +840,81 @@ def _run_inner(args, out=None, err=None):
                         file=err,
                     )
 
+        # AI advisory generation
+        if args.advise:
+            from .ai_explain import AIAdvisor, resolve_api_key, redact_api_key
+
+            try:
+                import anthropic  # noqa: F401, F811
+            except ImportError:
+                print(
+                    "MigraDiff: --advise requires the AI extras.",
+                    file=err,
+                )
+                print("Install with: pip install migradiff[ai]", file=err)
+                return 1
+
+            api_key = resolve_api_key(cli_key=args.api_key)
+            if not api_key:
+                print(
+                    "MigraDiff: --advise requires an Anthropic API key.",
+                    file=err,
+                )
+                print(file=err)
+                print("Set it up once with:", file=err)
+                print("  migra --setup-ai", file=err)
+                print(file=err)
+                print("Or set the environment variable:", file=err)
+                print("  export ANTHROPIC_API_KEY=sk-ant-...", file=err)
+                print(file=err)
+                print(
+                    "Get an API key at: https://console.anthropic.com",
+                    file=err,
+                )
+                return 1
+
+            if statements:
+                from .ai_explain import extract_table_stats
+
+                advise_sql = modified_statements.sql
+                stmt_info = [classify_sql_statement(s) for s in statements]
+
+                # Extract table stats if connection available
+                table_stats = ""
+                if args.dburl_from:
+                    try:
+                        referenced_tables = set()
+                        for s in statements:
+                            upper = s.strip().upper()
+                            m = re.match(
+                                r"(?:ALTER|DROP|TRUNCATE)\s+TABLE\s+(?:IF\s+EXISTS\s+)?(.+?)(?:\s|;|$)",
+                                upper,
+                            )
+                            if m:
+                                referenced_tables.add(m.group(1).strip())
+                        if referenced_tables:
+                            table_stats = extract_table_stats(
+                                args.dburl_from, list(referenced_tables)
+                            )
+                    except Exception:
+                        table_stats = ""
+                else:
+                    table_stats = (
+                        "Table size statistics unavailable (no live connection). "
+                    )
+
+                advisor = AIAdvisor(api_key)
+                try:
+                    advisory_result = advisor.advise(advise_sql, stmt_info, table_stats)
+                except RuntimeError as e:
+                    print(str(e), file=err)
+                except Exception as e:
+                    msg = redact_api_key(str(e))
+                    print(
+                        "MigraDiff: AI advisory failed: {}".format(msg),
+                        file=err,
+                    )
+
         try:
             if statements:
                 if args.output == "json":
@@ -827,6 +943,17 @@ def _run_inner(args, out=None, err=None):
                             "generated_at": rollback_result["generated_at"],
                         }
                         json_out = json_mod.dumps(data, indent=2)
+                    if advisory_result:
+                        import json as json_mod
+
+                        data = json_mod.loads(json_out)
+                        data["advisory"] = {
+                            "overall_risk": advisory_result.get("overall_risk", "LOW"),
+                            "statements": advisory_result.get("statement_details", []),
+                            "model": advisory_result.get("model", ""),
+                            "generated_at": advisory_result.get("generated_at", ""),
+                        }
+                        json_out = json_mod.dumps(data, indent=2)
                     print(json_out, file=out)
                 elif args.force_utf8:
                     print(modified_statements.sql.encode("utf8"), file=out)
@@ -839,6 +966,10 @@ def _run_inner(args, out=None, err=None):
                 if rollback_result and args.output != "json":
                     print(file=out)
                     print(rollback_result["text"], file=out)
+                if advisory_result and args.output != "json":
+                    print(file=out)
+                    print("--- Performance Advisory ---", file=out)
+                    print(advisory_result["text"], file=out)
             elif args.output == "json":
                 json_out = format_json_output(
                     statements,
@@ -865,12 +996,25 @@ def _run_inner(args, out=None, err=None):
                         "generated_at": rollback_result["generated_at"],
                     }
                     json_out = json_mod.dumps(data, indent=2)
+                if advisory_result:
+                    import json as json_mod
+
+                    data = json_mod.loads(json_out)
+                    data["advisory"] = {
+                        "overall_risk": advisory_result.get("overall_risk", "LOW"),
+                        "statements": advisory_result.get("statement_details", []),
+                        "model": advisory_result.get("model", ""),
+                        "generated_at": advisory_result.get("generated_at", ""),
+                    }
+                    json_out = json_mod.dumps(data, indent=2)
                 print(json_out, file=out)
-            elif args.explain or args.rollback:
+            elif args.explain or args.rollback or args.advise:
                 if args.explain:
                     print("--- AI Explanation ---", file=out)
                 if args.rollback:
                     print("--- Rollback ---", file=out)
+                if args.advise:
+                    print("--- Performance Advisory ---", file=out)
                 print(
                     "No schema differences detected. The schemas are identical.",
                     file=out,

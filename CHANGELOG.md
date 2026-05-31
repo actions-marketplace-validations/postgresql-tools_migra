@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- --advise flag: AI-powered performance risk analysis for any
+  migration diff or file; classifies each statement as HIGH,
+  MEDIUM, or LOW risk; identifies table locks, rewrites, and
+  data loss; suggests zero-downtime safer alternatives;
+  uses live table row counts when connection available for
+  accurate lock duration estimates; combinable with --explain,
+  --rollback, and --output json
 - --rollback flag: AI-generated reverse migration for any diff
   or migration file; deterministic reversals for safe operations
   (ADD COLUMN, CREATE INDEX, RENAME COLUMN); AI-reconstructed DDL

@@ -683,6 +683,314 @@ def generate_file_rollback(filepath, api_key=None):
     }
 
 
+ADVISE_SYSTEM_PROMPT = (
+    "You are a PostgreSQL performance expert specializing in schema"
+    " migration risk analysis. For each SQL statement provided, analyze:\n"
+    "1. Whether it causes table locks and for how long\n"
+    "2. Whether it rewrites table data\n"
+    "3. The estimated impact based on table size context provided\n"
+    "4. A safer zero-downtime alternative where one exists\n"
+    "\n"
+    "Format each statement analysis as:\n"
+    "Statement N: <sql>\n"
+    "Risk: HIGH/MEDIUM/LOW\n"
+    "Issue: <specific problem>\n"
+    "Estimated impact: <what happens at scale>\n"
+    "Safer alternative: <zero-downtime SQL if applicable>\n"
+    "\n"
+    "End with an overall risk summary.\n"
+    "Be specific and practical. Output only the analysis, no preamble."
+)
+
+ADVISE_MAX_TOKENS = 2048
+
+
+def classify_statement_risk(sql):
+    """Deterministic pre-classification of a SQL statement's risk level.
+
+    Returns a dict with keys: risk (HIGH/MEDIUM/LOW), issue (str),
+    and confidence (float 0-1).
+    """
+    upper = sql.strip().upper()
+
+    # HIGH risk patterns
+    if re.match(r"ALTER\s+TABLE.*ADD\s+(?:COLUMN\s+)?.+\s+DEFAULT\s+", upper):
+        return {
+            "risk": "HIGH",
+            "issue": "ADD COLUMN with DEFAULT may rewrite entire table on PG < 11, "
+            "and can still cause table rewrite depending on data type and storage",
+            "confidence": 0.9,
+        }
+    if re.match(r"ALTER\s+TABLE.*ALTER\s+(?:COLUMN\s+)?.+?\s+TYPE\s+", upper):
+        return {
+            "risk": "HIGH",
+            "issue": "ALTER COLUMN TYPE rewrites the entire table and holds an "
+            "ACCESS EXCLUSIVE lock",
+            "confidence": 0.95,
+        }
+    if re.match(r"DROP\s+TABLE", upper):
+        return {
+            "risk": "HIGH",
+            "issue": "Irreversible data loss. All rows permanently deleted",
+            "confidence": 1.0,
+        }
+    if re.match(r"ALTER\s+TABLE.*DROP\s+(?:COLUMN\s+)?", upper):
+        return {
+            "risk": "HIGH",
+            "issue": "Irreversible data loss. Column data permanently deleted",
+            "confidence": 1.0,
+        }
+    if re.match(r"TRUNCATE", upper):
+        return {
+            "risk": "HIGH",
+            "issue": "Irreversible data loss. All rows permanently deleted",
+            "confidence": 1.0,
+        }
+    m = re.match(r"CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+CONCURRENTLY)?\s+", upper)
+    if m and "CONCURRENTLY" not in upper.split("INDEX", 1)[1][:20]:
+        return {
+            "risk": "HIGH",
+            "issue": "CREATE INDEX without CONCURRENTLY locks the table "
+            "against writes for the entire build",
+            "confidence": 0.9,
+        }
+    # ALTER TABLE ... ADD CONSTRAINT ... NOT VALID
+    if re.search(r"ALTER\s+TABLE.*ADD\s+CONSTRAINT.*NOT\s+VALID", upper):
+        return {
+            "risk": "MEDIUM",
+            "issue": "NOT VALID avoids initial table scan but VALIDATE CONSTRAINT "
+            "still requires a full scan",
+            "confidence": 0.8,
+        }
+    # ALTER TABLE ... VALIDATE CONSTRAINT
+    if re.search(r"ALTER\s+TABLE.*VALIDATE\s+CONSTRAINT", upper):
+        return {
+            "risk": "MEDIUM",
+            "issue": "VALIDATE CONSTRAINT performs a full table scan "
+            "which may be slow on large tables",
+            "confidence": 0.8,
+        }
+
+    # MEDIUM risk patterns
+    if re.match(r"ALTER\s+TABLE.*RENAME\s+(?:COLUMN\s+|TO\s)", upper):
+        return {
+            "risk": "MEDIUM",
+            "issue": "Application code may reference the old name",
+            "confidence": 0.7,
+        }
+    if re.match(r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+", upper):
+        return {
+            "risk": "MEDIUM",
+            "issue": "CONCURRENTLY avoids table lock but cannot run "
+            "inside a transaction block",
+            "confidence": 0.8,
+        }
+    if re.match(r"ALTER\s+TABLE.*ADD\s+FOREIGN\s+KEY", upper):
+        return {
+            "risk": "MEDIUM",
+            "issue": "Scans both referencing and referenced tables to validate",
+            "confidence": 0.7,
+        }
+    if (
+        re.match(r"ALTER\s+TABLE.*ADD\s+(?:COLUMN\s+)?", upper)
+        and "DEFAULT" not in upper
+    ):
+        return {
+            "risk": "LOW",
+            "issue": "Schema change without DEFAULT is safe — no table rewrite",
+            "confidence": 0.9,
+        }
+
+    # LOW risk patterns
+    if re.match(r"CREATE\s+SEQUENCE", upper):
+        return {"risk": "LOW", "issue": "Safe operation", "confidence": 0.95}
+    if re.search(r"ADD\s+VALUE\s+IF\s+NOT\s+EXISTS", upper):
+        return {"risk": "LOW", "issue": "Safe enum extension", "confidence": 0.95}
+    if re.match(r"ALTER\s+TABLE.*ADD\s+CONSTRAINT.*CHECK\s+NOT\s+VALID", upper):
+        return {
+            "risk": "LOW",
+            "issue": "CHECK NOT VALID avoids table scan",
+            "confidence": 0.9,
+        }
+    if re.match(r"COMMENT\s+ON", upper):
+        return {
+            "risk": "LOW",
+            "issue": "Metadata only, no data impact",
+            "confidence": 0.95,
+        }
+    if re.match(r"CREATE\s+SCHEMA", upper):
+        return {"risk": "LOW", "issue": "Safe schema creation", "confidence": 0.95}
+    if re.match(r"(?:GRANT|REVOKE)\s+", upper):
+        return {"risk": "LOW", "issue": "Permission change only", "confidence": 0.95}
+
+    return {
+        "risk": "LOW",
+        "issue": "No known performance risk pattern",
+        "confidence": 0.5,
+    }
+
+
+def build_advise_prompt(numbered_sql_statements, table_stats=None):
+    table_stats_text = (
+        table_stats
+        if table_stats
+        else "Table size statistics unavailable (no live connection). "
+        "Risk estimates are conservative — actual impact may vary."
+    )
+    user_prompt = (
+        "Migration statements to analyze:\n\n"
+        "{numbered_sql_statements}\n\n"
+        "Table size context (from source schema statistics):\n"
+        "{table_stats}\n\n"
+        "PostgreSQL version context: analyze for PostgreSQL 14+ behavior.\n"
+        "\n"
+        "Analyze each statement for locking risk, table rewrites, and "
+        "data loss. Suggest safer zero-downtime alternatives where applicable."
+    )
+    return user_prompt.format(
+        numbered_sql_statements=numbered_sql_statements,
+        table_stats=table_stats_text,
+    )
+
+
+def extract_table_stats(conn_url, table_names):
+    """Fetch row counts for referenced tables from the source database."""
+    if not conn_url or not table_names:
+        return ""
+    try:
+        from sqlbag import S
+    except ImportError:
+        return ""
+
+    stats_lines = []
+    try:
+        with S(conn_url) as s:
+            for tbl in table_names:
+                schema = "public"
+                table = tbl
+                if "." in tbl:
+                    schema, table = tbl.split(".", 1)
+                table = table.strip('"')
+                schema = schema.strip('"')
+                rows = s.execute(
+                    """
+                    SELECT n_live_tup
+                    FROM pg_stat_user_tables
+                    WHERE schemaname = %s AND relname = %s
+                """,
+                    (schema, table),
+                )
+                row = rows.fetchone() if hasattr(rows, "fetchone") else None
+                if row and row[0] is not None:
+                    stats_lines.append("- {}: ~{} rows".format(tbl, row[0]))
+                else:
+                    stats_lines.append("- {}: no statistics available".format(tbl))
+    except Exception:
+        stats_lines.append("Could not fetch table statistics from source database.")
+
+    if not stats_lines:
+        return ""
+    return "\n".join(stats_lines)
+
+
+class AIAdvisor:
+    def __init__(self, api_key):
+        self.api_key = api_key
+
+    def advise(self, sql_statements, statements_info, table_stats=None):
+        import anthropic
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        if not sql_statements or not sql_statements.strip():
+            return {
+                "text": "No statements to analyze.",
+                "model": "",
+                "generated_at": timestamp,
+                "overall_risk": "LOW",
+                "statement_details": [],
+            }
+
+        # Number statements for the prompt
+        stmts = _split_statements(sql_statements)
+        numbered = []
+        for i, stmt in enumerate(stmts, 1):
+            numbered.append("Statement {}: {}".format(i, stmt))
+        numbered_sql = "\n".join(numbered)
+
+        user_prompt = build_advise_prompt(numbered_sql, table_stats)
+
+        client = anthropic.Anthropic(api_key=self.api_key)
+        try:
+            response = client.messages.create(
+                model=DEFAULT_MODEL,
+                max_tokens=ADVISE_MAX_TOKENS,
+                temperature=TEMPERATURE,
+                system=ADVISE_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            text = response.content[0].text
+
+            # Determine overall risk from text
+            overall_risk = "LOW"
+            if "HIGH RISK" in text.upper() or "overall risk: HIGH" in text.lower():
+                overall_risk = "HIGH"
+            elif (
+                "MEDIUM RISK" in text.upper() or "overall risk: MEDIUM" in text.lower()
+            ):
+                overall_risk = "MEDIUM"
+
+            return {
+                "text": text,
+                "model": DEFAULT_MODEL,
+                "generated_at": timestamp,
+                "overall_risk": overall_risk,
+                "statement_details": [classify_statement_risk(s) for s in stmts],
+            }
+        except Exception as e:
+            msg = redact_api_key(str(e))
+            raise RuntimeError("MigraDiff: AI advisory failed: {}".format(msg))
+
+
+def _numbered_sql_statements(sql_text):
+    """Return a numbered list of SQL statements for prompt inclusion."""
+    stmts = _split_statements(sql_text)
+    numbered = []
+    for i, stmt in enumerate(stmts, 1):
+        numbered.append("Statement {}: {}".format(i, stmt))
+    return "\n".join(numbered)
+
+
+def generate_file_advisory(filepath, api_key=None):
+    """Generate advisory for a migration file."""
+    if not os.path.exists(filepath):
+        raise ValueError("MigraDiff: File not found: {}".format(filepath))
+
+    with open(filepath, "r") as f:
+        sql = f.read()
+
+    if not sql.strip():
+        return {
+            "text": "No statements to analyze.",
+            "model": "",
+            "generated_at": "",
+            "overall_risk": "LOW",
+            "statement_details": [],
+        }
+
+    if not api_key:
+        return {
+            "text": "MigraDiff: --advise requires an Anthropic API key.",
+            "model": "",
+            "generated_at": "",
+            "overall_risk": "",
+            "statement_details": [],
+        }
+
+    advisor = AIAdvisor(api_key)
+    return advisor.advise(sql, [])
+
+
 def setup_ai_interactive(out, err):
     key = None
     try:
