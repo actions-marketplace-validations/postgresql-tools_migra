@@ -1051,6 +1051,39 @@ def check_safety_rules(description):
     return {"action": "allow", "reason": ""}
 
 
+def _append_table_comments(conn, schema, table, context_parts, cols):
+    comment_rows = conn.execute(
+        """
+        SELECT d.objsubid, a.attname, d.description
+        FROM pg_catalog.pg_description d
+        JOIN pg_catalog.pg_class c ON c.oid = d.objoid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_catalog.pg_attribute a
+            ON a.attrelid = c.oid AND a.attnum = d.objsubid
+        WHERE n.nspname = %s AND c.relname = %s
+          AND d.classoid = 'pg_class'::regclass
+          AND (d.objsubid = 0 OR a.attnum > 0)
+    """,
+        (schema, table),
+    )
+    crs = (
+        list(comment_rows)
+        if hasattr(comment_rows, "__iter__")
+        else comment_rows.fetchall()
+    )
+    for cr in crs:
+        if cr.objsubid == 0 and cr.description:
+            context_parts.append(
+                '-- Comment on {}.{}: "{}"'.format(schema, table, cr.description)
+            )
+        elif cr.objsubid > 0 and cr.attname and cr.description:
+            context_parts.append(
+                '-- Comment on {}.{}.{}: "{}"'.format(
+                    schema, table, cr.attname, cr.description
+                )
+            )
+
+
 def extract_relevant_schema(conn_url, description):
     """Extract relevant table DDL for a description against a live database.
 
@@ -1158,6 +1191,12 @@ def extract_relevant_schema(conn_url, description):
                                 "-- Table {}.{}:\n{}".format(schema, tbl, table_ddl)
                             )
 
+                        # Fetch table and column comments
+                        try:
+                            _append_table_comments(s, schema, tbl, context_parts, cols)
+                        except Exception:
+                            pass
+
                         if len(found_tables) >= 5:
                             break
                 if len(found_tables) >= 5:
@@ -1224,6 +1263,11 @@ def extract_relevant_schema(conn_url, description):
                         context_parts.append(
                             "-- Table {}.{}:\n{}".format(schema, tbl, table_ddl2)
                         )
+
+                        try:
+                            _append_table_comments(s, schema, tbl, context_parts, cols2)
+                        except Exception:
+                            pass
 
     except Exception:
         return ""
