@@ -59,9 +59,7 @@ def _patched_drop_database(db_url):
             )
         sc.kill_other_connections(c, name, hardkill=True)
         c.execute(
-            sa.text(
-                "drop database if exists {}".format(sc.quoted_identifier(name))
-            )
+            sa.text("drop database if exists {}".format(sc.quoted_identifier(name)))
         )
     return True
 
