@@ -9,6 +9,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from .migra import Migration
+from sqlalchemy import text
+
 from .statements import UnsafeMigrationException
 
 
@@ -316,7 +318,7 @@ def apply_migrations(directory):
                     with open(f, "r") as fh:
                         sql = fh.read()
                     if sql.strip():
-                        s.execute(sql)
+                        s.execute(text(sql))
                 except Exception as e:
                     raise RuntimeError(
                         f"MigraDiff: Migration file failed to apply:\n"
@@ -343,7 +345,7 @@ def migrations_context(directory):
                     sql = fh.read()
                 if sql.strip():
                     try:
-                        s.execute(sql)
+                        s.execute(text(sql))
                     except Exception as e:
                         raise RuntimeError(
                             f"MigraDiff: Migration file failed to apply:\n"
