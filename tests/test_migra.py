@@ -23,7 +23,7 @@ def textdiff(a, b):
 
 
 def _strip_view_qualifiers(sql):
-    return re.sub(r'(\w+|"[^"]+")\.(\w+|"[^"]+")', r'\2', sql)
+    return re.sub(r'(\w+|"[^"]+")\.(\w+|"[^"]+")', r"\2", sql)
 
 
 SQL = """select 1;
@@ -207,7 +207,9 @@ def do_fixture_test(
             expected = EXPECTED2 if ADDITIONS else EXPECTED
 
             if check_expected:
-                assert _strip_view_qualifiers(m.sql.strip()) == _strip_view_qualifiers(expected)  # sql generated OK
+                assert _strip_view_qualifiers(m.sql.strip()) == _strip_view_qualifiers(
+                    expected
+                )  # sql generated OK
 
             m.apply()
             # check for changes again and make sure none are pending
