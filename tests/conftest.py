@@ -64,6 +64,30 @@ def _patched_drop_database(db_url):
     return True
 
 
+def _patched_kill_other_connections(s_or_c, dbname=None, hardkill=False):
+    c = sc.connection_from_s_or_c(s_or_c)
+    dbtype = c.engine.dialect.name
+    killquery = sc._killquery(dbtype, dbname=dbname, hardkill=hardkill)
+    if dbname:
+        results = c.execute(sa.text(killquery), {"databasename": dbname})
+    else:
+        results = c.execute(sa.text(killquery))
+    if dbtype == "mysql":
+        from sqlbag.sqla import DB_ERROR_TUPLE
+
+        for x in results:
+            kill = sa.text("kill connection :pid")
+            try:
+                c.execute(kill, {"pid": x.process_id})
+            except DB_ERROR_TUPLE as e:
+                code, message = e.orig.args
+                if "Unknown thread id" in message:
+                    pass
+                else:
+                    raise
+
+
 sc._database_exists = _patched_database_exists
 sc.create_database = _patched_create_database
 sc.drop_database = _patched_drop_database
+sc.kill_other_connections = _patched_kill_other_connections

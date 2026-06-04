@@ -101,19 +101,17 @@ schemainspect_test_role = "schemainspect_test_role"
 
 
 def create_role(s, rolename):
+    from sqlalchemy import text
+
     role = s.execute(
-        """
-SELECT 1 FROM pg_roles WHERE rolname=:rolename
-    """,
-        dict(rolename=rolename),
+        text("SELECT 1 FROM pg_roles WHERE rolname=:rolename"),
+        {"rolename": rolename},
     )
 
     role_exists = bool(list(role))
 
     if not role_exists:
-        s.execute(f"""
-            create role {rolename};
-        """)
+        s.execute(text(f"create role {rolename}"))
 
 
 def test_rls():
