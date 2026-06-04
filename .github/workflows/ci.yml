@@ -81,6 +81,7 @@ jobs:
       - name: Create database user
         run: |
           psql -U postgres -h localhost -c "CREATE ROLE runner SUPERUSER LOGIN;"
+          psql -U postgres -h localhost -c "CREATE DATABASE runner OWNER runner;"
 
       - name: Run tests
         run: |
@@ -123,6 +124,7 @@ jobs:
       - name: Create database user
         run: |
           psql -U postgres -h localhost -c "CREATE ROLE runner SUPERUSER LOGIN;"
+          psql -U postgres -h localhost -c "CREATE DATABASE runner OWNER runner;"
 
       - name: Run tests with coverage
         run: |
