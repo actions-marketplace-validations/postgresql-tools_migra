@@ -72,6 +72,8 @@ jobs:
 
       - name: Install MigraDiff
         run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install pytest psycopg2-binary
           pip install -e ".[dev,ai]"
 
       - name: Run tests
