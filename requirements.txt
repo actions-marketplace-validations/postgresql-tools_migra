@@ -1,0 +1,6 @@
+six==1.17.0
+sqlbag==0.1.1617247075
+schemainspect==3.1.1663587362
+psycopg2-binary==2.9.12
+SQLAlchemy==1.4.54
+setuptools==81.0.0

@@ -1,5 +1,7 @@
 # migra — PostgreSQL Schema Diff Tool
 
+[![PyPI version](https://img.shields.io/pypi/v/migradiff)](https://pypi.org/project/migradiff/)
+[![Python versions](https://img.shields.io/pypi/pyversions/migradiff)](https://pypi.org/project/migradiff/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **The actively maintained fork of [djrobstep/migra](https://github.com/djrobstep/migra).**
@@ -20,6 +22,13 @@ If you were using `djrobstep/migra`, this is your drop-in continuation.
 Nothing has changed about how the tool works. We're just keeping the
 lights on and making it better.
 
+**A note on naming:** This is an independent community fork. The CLI 
+command remains `migra` for drop-in backward compatibility with 
+existing scripts and pipelines. The package name is `migradiff` to 
+distinguish it from the deprecated upstream. If you are looking for 
+the original djrobstep/migra, it is archived at 
+https://github.com/djrobstep/migra.
+
 ---
 
 ## Quickstart
@@ -27,14 +36,20 @@ lights on and making it better.
 ### Install
 
 ```bash
+pip install migradiff
+```
+
+Requires Python 3.10+ and a running PostgreSQL instance (12+).
+
+To install from source:
+
+```bash
 git clone https://github.com/migradiff/migra
 cd migra
 pip install -e .
 ```
 
-Requires Python 3.10+ and a running PostgreSQL instance (12+).
-
-> **Note:** PyPI package coming with v1.1.0.
+> **Note:** PyPI package is available on all releases.
 
 ### Basic Usage
 
@@ -69,6 +84,17 @@ migra --from-file schema_a.sql schema_b.sql
 This is the recommended approach for CI pipelines and security-conscious
 environments — no production credentials required.
 
+### Migrations Directory (No Live Branch Database Required)
+
+If your target state is defined by a folder of migration files:
+
+```bash
+migra --from-migrations-dir ./migrations postgres://db_production
+```
+
+MigraDiff applies the migrations to an ephemeral database and diffs the
+result. Supports Supabase, Flyway, and standard numeric naming conventions.
+
 ### Scoped to a Schema
 
 ```bash
@@ -89,6 +115,110 @@ migra --output json postgres://db_a postgres://db_b
 
 Output includes per-statement risk classification (`safe`, `warning`,
 `destructive`) and a summary with overall risk level.
+
+---
+
+## AI-Powered Explanation (Optional)
+
+MigraDiff can explain any migration in plain English — what each
+change does, what risks it carries, and safer alternatives for
+destructive operations.
+
+    migra --explain postgres://db_a postgres://db_b
+
+Output:
+
+    --- Migration SQL ---
+    ALTER TABLE public.users ADD COLUMN email text;
+    DROP TABLE public.legacy_sessions;
+
+    --- AI Explanation ---
+    This migration makes 2 changes to your database:
+
+    1. SAFE: Adds an email column (text) to the users table.
+       No existing data is affected.
+
+    2. ⚠ DESTRUCTIVE: Drops the legacy_sessions table entirely.
+       All data in this table will be permanently lost.
+       Consider archiving before dropping.
+
+    Overall risk: HIGH
+
+Powered by Claude (Anthropic). Bring your own API key — no data
+is sent to MigraDiff servers.
+
+### Setup
+
+Install the AI extras:
+
+    pip install migradiff[ai]
+
+Configure your API key once:
+
+    migra --setup-ai
+
+Or set the environment variable:
+
+    export ANTHROPIC_API_KEY=sk-ant-...
+
+Get an API key at https://console.anthropic.com
+
+### AI Rollback Generation (--rollback)
+
+Generate the exact reverse migration — the SQL needed to undo
+any migration:
+
+    migra --rollback migration.sql
+    migra --rollback postgres://db_a postgres://db_b
+
+MigraDiff uses your source schema context to reconstruct DROP
+TABLE and DROP COLUMN reversals accurately. Non-reversible
+operations (TRUNCATE, bulk DELETE) are flagged explicitly.
+
+Combine with --explain for a complete picture:
+
+    migra --explain --rollback postgres://db_a postgres://db_b
+
+Requires `pip install migradiff[ai]` and an Anthropic API key.
+
+### AI Performance Advisor (--advise)
+
+Before applying any migration, get a performance risk assessment
+— locking behavior, table rewrite risk, and zero-downtime
+alternatives:
+
+    migra --advise postgres://db_a postgres://db_b
+    migra --advise migration.sql
+
+MigraDiff analyzes each statement for PostgreSQL-specific risks:
+table locks, full rewrites, irreversible data loss. When a live
+connection is provided, table row counts are used to estimate
+lock duration at your actual data scale.
+
+Combine all three AI features for a complete picture:
+
+    migra --explain --advise --rollback postgres://db_a postgres://db_b
+
+Requires pip install migradiff[ai] and an Anthropic API key.
+
+### AI Migration Generator (--generate)
+
+Describe what you want in plain English — MigraDiff generates
+the migration SQL grounded in your actual schema:
+
+    migra --generate "add email verification to users table" \
+      postgres://db_production
+
+Unlike generic AI tools, MigraDiff knows your real table names,
+column types, and constraints — no hallucinated column names or
+wrong types.
+
+Generate and immediately review the risk:
+
+    migra --generate "add index on orders.user_id" \
+      --advise postgres://db_production
+
+Requires pip install migradiff[ai] and an Anthropic API key.
 
 ---
 
@@ -191,6 +321,7 @@ configuration options.
 - Foreign data wrappers
 - Column-level privileges
 - Partitioned tables
+- Object comments (`COMMENT ON`)
 
 ---
 
@@ -208,6 +339,8 @@ configuration options.
 | GitHub Action | None | `migradiff/migra-action` |
 | Pre-commit hook | None | `.pre-commit-hooks.yaml` |
 | Dev environment | Manual Docker commands | `docker compose up -d` |
+| AI explanation | None | `--explain` flag with Claude — plain English diff explanation, risk analysis, safer alternatives |
+| COMMENT ON diffing | Not supported | Full diffing — add/change/remove across all object types |
 
 See [CHANGELOG.md](CHANGELOG.md) for the full fix history.
 
@@ -238,6 +371,14 @@ docker compose up -d
 pip install -e ".[dev]"
 pytest
 ```
+
+---
+
+## Enterprise
+
+MigraDiff is MIT licensed. If you are building a commercial product
+on top of MigraDiff, we'd love to hear from you —
+enterprise@Lateos.ai
 
 ---
 

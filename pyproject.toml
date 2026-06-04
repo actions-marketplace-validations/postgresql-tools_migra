@@ -1,21 +1,23 @@
 [tool.poetry]
-name = "migra"
-version = "3.0"
-authors = [ "Robert Lechte <robertlechte@gmail.com>",]
-license = "Unlicense"
+name = "migradiff"
+version = "1.5.0"
+authors = [ "MigraDiff Team <migradiff@anomalyco.com>",]
+license = "MIT"
 readme = "README.md"
-description = "Like `diff` but for PostgreSQL schemas"
+description = "Like `diff` but for PostgreSQL schemas — actively maintained fork"
 
-repository = "https://github.com/djrobstep/migra"
-homepage = "https://databaseci.com/docs/migra"
+repository = "https://github.com/migradiff/migra"
+homepage = "https://github.com/migradiff/migra"
+packages = [{ include = "migra" }]
 
 [tool.poetry.dependencies]
 python = ">=3.7,<4"
 sqlbag = "*"
 six = "*"
 # schemainspect = {path="../schemainspect", develop=true}
-schemainspect = ">=3.1.1663480743"
+schemainspect = ">=3.1.1663587362"
 psycopg2-binary = { version="*", optional = true }
+anthropic = { version = ">=0.20.0", optional = true }
 
 [tool.poetry.dev-dependencies]
 sqlbag = "*"
@@ -33,6 +35,7 @@ migra = 'migra:do_command'
 
 [tool.poetry.extras]
 pg = ["psycopg2-binary"]
+ai = ["anthropic"]
 
 [tool.isort]
 multi_line_output = 3

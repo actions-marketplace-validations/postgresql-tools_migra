@@ -8,6 +8,254 @@ import schemainspect
 from .statements import Statements
 from .util import differences
 
+RELATIONS_COMMENTS_SQL = """
+SELECT
+    c.relname,
+    n.nspname AS schema_name,
+    d.description,
+    d.objsubid,
+    a.attname AS column_name,
+    c.relkind
+FROM pg_catalog.pg_description d
+JOIN pg_catalog.pg_class c ON c.oid = d.objoid
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_catalog.pg_attribute a
+    ON a.attrelid = c.oid AND a.attnum = d.objsubid AND d.objsubid > 0
+WHERE d.classoid = 'pg_class'::regclass
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND n.nspname NOT LIKE 'pg_toast\\_%%'
+  AND n.nspname NOT LIKE 'pg_temp\\_%%'
+"""
+
+FUNCTIONS_COMMENTS_SQL = """
+SELECT
+    p.proname,
+    n.nspname AS schema_name,
+    d.description,
+    pg_get_function_identity_arguments(p.oid) AS identity_args
+FROM pg_catalog.pg_description d
+JOIN pg_catalog.pg_proc p ON p.oid = d.objoid
+JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+WHERE d.classoid = 'pg_proc'::regclass
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+"""
+
+TYPES_COMMENTS_SQL = """
+SELECT
+    t.typname,
+    n.nspname AS schema_name,
+    d.description
+FROM pg_catalog.pg_description d
+JOIN pg_catalog.pg_type t ON t.oid = d.objoid
+JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+WHERE d.classoid = 'pg_type'::regclass
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+"""
+
+SCHEMAS_COMMENTS_SQL = """
+SELECT
+    n.nspname AS schema_name,
+    d.description
+FROM pg_catalog.pg_description d
+JOIN pg_catalog.pg_namespace n ON n.oid = d.objoid
+WHERE d.classoid = 'pg_namespace'::regclass
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+"""
+
+CONSTRAINTS_COMMENTS_SQL = """
+SELECT
+    con.conname,
+    n.nspname AS schema_name,
+    c.relname AS table_name,
+    d.description
+FROM pg_catalog.pg_description d
+JOIN pg_catalog.pg_constraint con ON con.oid = d.objoid
+JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE d.classoid = 'pg_constraint'::regclass
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+"""
+
+
+def _quote_ident(name):
+    if name is None:
+        return ""
+    return '"{}"'.format(name.replace('"', '""'))
+
+
+def _relkind_to_objtype(relkind):
+    mapping = {
+        "r": "TABLE",
+        "p": "TABLE",
+        "v": "VIEW",
+        "m": "MATERIALIZED VIEW",
+        "c": "TYPE",
+        "i": "INDEX",
+        "S": "SEQUENCE",
+    }
+    return mapping.get(relkind, "TABLE")
+
+
+def _format_comment_on(key, text):
+    objtype = key[0]
+    if objtype == "COLUMN":
+        schema, table, column = key[1], key[2], key[3]
+        objname = "{}.{}.{}".format(
+            _quote_ident(schema), _quote_ident(table), _quote_ident(column)
+        )
+        stmt = "COMMENT ON COLUMN {} IS ".format(objname)
+    elif objtype == "CONSTRAINT":
+        schema, constraint, table = key[1], key[2], key[3]
+        objname = _quote_ident(constraint)
+        on_table = "{}.{}".format(_quote_ident(schema), _quote_ident(table))
+        stmt = "COMMENT ON CONSTRAINT {} ON {} IS ".format(objname, on_table)
+    elif objtype == "SCHEMA":
+        schema = key[1]
+        objname = _quote_ident(schema)
+        stmt = "COMMENT ON SCHEMA {} IS ".format(objname)
+    elif objtype == "FUNCTION":
+        schema, name, identity_args = key[1], key[2], key[3]
+        objname = "{}.{}({})".format(
+            _quote_ident(schema), _quote_ident(name), identity_args
+        )
+        stmt = "COMMENT ON FUNCTION {} IS ".format(objname)
+    else:
+        schema, name = key[1], key[2]
+        objname = "{}.{}".format(_quote_ident(schema), _quote_ident(name))
+        stmt = "COMMENT ON {} {} IS ".format(objtype, objname)
+
+    if text is None:
+        stmt += "NULL;"
+    else:
+        escaped = text.replace("'", "''")
+        stmt += "'{}';".format(escaped)
+    return stmt
+
+
+def _extract_comments(inspector):
+    if inspector is None:
+        return {}
+    try:
+        _ = inspector.c
+    except AttributeError:
+        return {}
+    if not hasattr(inspector, "execute"):
+        return {}
+
+    comments = {}
+    only_schema = (
+        getattr(inspector, "only_schema", None)
+        if hasattr(inspector, "only_schema")
+        else None
+    )
+    exclude_schema = (
+        getattr(inspector, "exclude_schema", None)
+        if hasattr(inspector, "exclude_schema")
+        else None
+    )
+
+    def _schema_filter(schema):
+        if only_schema and schema != only_schema:
+            return False
+        if exclude_schema and schema == exclude_schema:
+            return False
+        return True
+
+    try:
+        rows = inspector.execute(RELATIONS_COMMENTS_SQL)
+    except Exception:
+        rows = []
+    for row in rows:
+        try:
+            relname = row.relname
+            schema = row.schema_name
+            description = row.description
+            objsubid = row.objsubid
+            column_name = getattr(row, "column_name", None)
+            relkind = row.relkind
+        except AttributeError:
+            continue
+        if not _schema_filter(schema):
+            continue
+        if objsubid and objsubid > 0 and column_name:
+            key = ("COLUMN", schema, relname, column_name)
+        else:
+            objtype = _relkind_to_objtype(relkind)
+            key = (objtype, schema, relname)
+        comments[key] = description
+
+    try:
+        rows = inspector.execute(FUNCTIONS_COMMENTS_SQL)
+    except Exception:
+        rows = []
+    for row in rows:
+        try:
+            schema = row.schema_name
+            if not _schema_filter(schema):
+                continue
+            key = ("FUNCTION", schema, row.proname, row.identity_args or "")
+            comments[key] = row.description
+        except AttributeError:
+            continue
+
+    try:
+        rows = inspector.execute(TYPES_COMMENTS_SQL)
+    except Exception:
+        rows = []
+    for row in rows:
+        try:
+            schema = row.schema_name
+            if not _schema_filter(schema):
+                continue
+            key = ("TYPE", schema, row.typname)
+            comments[key] = row.description
+        except AttributeError:
+            continue
+
+    try:
+        rows = inspector.execute(SCHEMAS_COMMENTS_SQL)
+    except Exception:
+        rows = []
+    for row in rows:
+        try:
+            schema = row.schema_name
+            if not _schema_filter(schema):
+                continue
+            key = ("SCHEMA", schema)
+            comments[key] = row.description
+        except AttributeError:
+            continue
+
+    try:
+        rows = inspector.execute(CONSTRAINTS_COMMENTS_SQL)
+    except Exception:
+        rows = []
+    for row in rows:
+        try:
+            schema = row.schema_name
+            if not _schema_filter(schema):
+                continue
+            key = ("CONSTRAINT", schema, row.conname, row.table_name)
+            comments[key] = row.description
+        except AttributeError:
+            continue
+
+    return comments
+
+
+def _get_comment_changes(i_from, i_target):
+    comments_from = _extract_comments(i_from)
+    comments_target = _extract_comments(i_target)
+    all_keys = sorted(set(comments_from.keys()) | set(comments_target.keys()))
+    stmts = Statements()
+    for key in all_keys:
+        from_val = comments_from.get(key)
+        to_val = comments_target.get(key)
+        if from_val != to_val:
+            stmts.append(_format_comment_on(key, to_val))
+    return stmts
+
+
 THINGS = [
     "schemas",
     "enums",
@@ -21,7 +269,10 @@ THINGS = [
     "collations",
     "rlspolicies",
     "triggers",
+    "domains",
 ]
+
+COMMENT_THING = "comments"
 PK = "PRIMARY KEY"
 
 
@@ -187,19 +438,26 @@ def get_enum_modifications(
                 if has_default:
                     post.append(before.add_default_statement(t))
 
-    unwanted_suffix = "__old_version_to_be_dropped"
-
     for e in enums_to_change.values():
-        unwanted_name = e.name + unwanted_suffix
+        old_enum = enums_from[e.signature]
+        new_enum = enums_target[e.signature]
 
-        rename = e.alter_rename_statement(unwanted_name)
-        pre.append(rename)
+        if old_enum.can_be_changed_to(new_enum):
+            change_stmts = old_enum.change_statements(new_enum)
+            for stmt in change_stmts:
+                pre.append(stmt)
+        else:
+            unwanted_suffix = "__old_version_to_be_dropped"
+            unwanted_name = old_enum.name + unwanted_suffix
 
-        pre.append(e.create_statement)
+            rename = old_enum.alter_rename_statement(unwanted_name)
+            pre.append(rename)
 
-        drop_statement = e.drop_statement_with_rename(unwanted_name)
+            pre.append(new_enum.create_statement)
 
-        post.append(drop_statement)
+            drop_statement = old_enum.drop_statement_with_rename(unwanted_name)
+
+            post.append(drop_statement)
 
     if return_tuple:
         return pre, recreate + post
@@ -655,6 +913,10 @@ class Changes(object):
             self.i_target.sequences,
             modifications=False,
         )
+
+    @property
+    def comments(self):
+        return partial(_get_comment_changes, self.i_from, self.i_target)
 
     def __getattr__(self, name):
         if name in THINGS:

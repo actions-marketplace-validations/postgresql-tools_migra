@@ -1,0 +1,54 @@
+name: MigraDiff Schema Check
+description: >
+  Detects schema drift between two PostgreSQL databases and posts
+  the migration diff as a pull request comment.
+author: MigraDiff
+
+branding:
+  icon: database
+  color: blue
+
+inputs:
+  base_url:
+    description: Connection string for the base (production) database
+    required: false
+  head_url:
+    description: Connection string for the target (branch) database
+    required: false
+  base_file:
+    description: Path to a pg_dump -s schema file for the base schema
+    required: false
+  head_file:
+    description: Path to a pg_dump -s schema file for the target schema
+    required: false
+  schema:
+    description: Comma-separated list of schemas to include in the diff
+    required: false
+  output_format:
+    description: "Output format — 'sql' or 'json' (default: sql)"
+    required: false
+    default: sql
+  fail_on_destructive:
+    description: "Fail the action if any destructive operations are detected (DROP TABLE, DROP COLUMN, TRUNCATE). Default: false."
+    required: false
+    default: "false"
+
+outputs:
+  has_changes:
+    description: "true if the diff is non-empty, false if schemas match"
+  has_destructive_operations:
+    description: "true if any destructive SQL operations were detected"
+  diff_sql:
+    description: "The generated migration SQL (truncated to 65535 chars)"
+
+runs:
+  using: docker
+  image: docker://ghcr.io/migradiff/migra:1.4.0
+  env:
+    MIGRA_BASE_URL: ${{ inputs.base_url }}
+    MIGRA_HEAD_URL: ${{ inputs.head_url }}
+    MIGRA_BASE_FILE: ${{ inputs.base_file }}
+    MIGRA_HEAD_FILE: ${{ inputs.head_file }}
+    MIGRA_SCHEMA: ${{ inputs.schema }}
+    MIGRA_OUTPUT_FORMAT: ${{ inputs.output_format }}
+    MIGRA_FAIL_ON_DESTRUCTIVE: ${{ inputs.fail_on_destructive }}
