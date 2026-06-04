@@ -76,7 +76,7 @@ jobs:
 
       - name: Install MigraDiff with AI support
         run: |
-          pip install --no-build-isolation -e ".[dev,ai]"
+          pip install -e ".[dev,ai]"
 
       - name: Run tests
         run: |
@@ -101,7 +101,7 @@ jobs:
 
       - name: Install MigraDiff
         run: |
-          pip install --no-build-isolation -e ".[dev,ai]"
+          pip install -e ".[dev,ai]"
 
       - name: Run tests with coverage
         run: |
