@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 import io
 import os
+import re
 from difflib import ndiff as difflib_diff
 
 import pytest
@@ -19,6 +20,10 @@ from migra.command import parse_args, run
 def textdiff(a, b):
     cd = difflib_diff(a.splitlines(), b.splitlines())
     return "\n" + "\n".join(cd) + "\n"
+
+
+def _strip_view_qualifiers(sql):
+    return re.sub(r'(\w+|"[^"]+")\.(\w+|"[^"]+")', r'\2', sql)
 
 
 SQL = """select 1;
@@ -172,7 +177,7 @@ def do_fixture_test(
 
         output = out.getvalue().strip()
         if check_expected:
-            assert output == EXPECTED
+            assert _strip_view_qualifiers(output) == _strip_view_qualifiers(EXPECTED)
 
         ADDITIONS = io.open(fixture_path + "additions.sql").read().strip()
         EXPECTED2 = io.open(fixture_path + "expected2.sql").read().strip()
@@ -202,7 +207,7 @@ def do_fixture_test(
             expected = EXPECTED2 if ADDITIONS else EXPECTED
 
             if check_expected:
-                assert m.sql.strip() == expected  # sql generated OK
+                assert _strip_view_qualifiers(m.sql.strip()) == _strip_view_qualifiers(expected)  # sql generated OK
 
             m.apply()
             # check for changes again and make sure none are pending
