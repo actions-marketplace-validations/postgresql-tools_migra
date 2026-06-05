@@ -349,15 +349,29 @@ pytest
 
 ---
 
-## Enterprise
-
-MigraDiff ist MIT-lizenziert. Wenn Sie ein kommerzielles Produkt auf Basis von MigraDiff entwickeln, freuen wir uns auf Ihre Nachricht — enterprise@Lateos.ai
-
----
-
 ## Lizenz
 
-MIT. Siehe [LICENSE](LICENSE).
+MigraDiff ist **kostenlos und Open Source** unter der MIT-Lizenz.
+
+**Alle Funktionen stehen jedem zur Verfugung.** Keine Bezahlschranken, keine Code-Einschrankungen, keine Abschottung.
+
+### Eine kurze Geschichte
+
+Ich habe uber 8 Jahre als Ingenieur bei Philips gearbeitet und Krankenhaus-IT-Systeme unterstutzt, die Patienten sicher halten. Als der VC, der unsere Abteilung ubernommen hatte, mich entliess, war ich uber 50 Jahre alt in einem Markt, in dem Alter eine Rolle spielt. Einen anderen Job zu finden wurde fast unmoglich. Ich muss immer noch meine Familie ernahren.
+
+Deshalb gibt es MigraDiff. Ich entwickle Werkzeuge, die Ihnen helfen, weil ich so beschaftigt bleibe.
+
+### Die Bitte
+
+**Wenn Sie Student, Hobbyist oder ein Open-Source-Projekt sind:** MIT-Lizenz, fur immer kostenlos. Keine Vereinbarung erforderlich.
+
+**Wenn Sie ein gewinnorientiertes Unternehmen sind, das MigraDiff verwendet:** Bitte unterzeichnen Sie eine Business-License-Vereinbarung. Es geht nicht darum, Code abzuschotten--jede Funktion bleibt kostenlos, Sie fuhren es lokal aus, technisch andert sich nichts fur Sie. Es geht um Fairness: Wenn mein Werkzeug Ihnen hilft, Geld zu verdienen, helfen Sie mir, meine Familie zu ernahren.
+
+Sie besitzen weiterhin alles. Sie kontrollieren Ihre Daten. Sie haben Zugriff auf alle Funktionen. Wir sind nur transparent daruber, wie wir die Entwicklung finanzieren.
+
+Ich bitte nicht um Almosen. Ich bitte um Fairness.
+
+[Business-Lizenz erhalten](https://lateos.ai/license) | [MIT-Lizenz anzeigen](LICENSE)
 
 ---
 
