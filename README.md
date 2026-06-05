@@ -1,3 +1,20 @@
+# MigraDiff
+
+<div align="center">
+
+**Choose a language:**  
+[English](README.md) | 
+[हिन्दी](README.hi.md) | 
+[中文](README.zh.md) | 
+[日本語](README.ja.md) | 
+[Français](README.fr.md) | 
+[Deutsch](README.de.md) | 
+[עברית](README.he.md)
+
+</div>
+
+---
+
 # migra — PostgreSQL Schema Diff Tool
 
 [![PyPI version](https://img.shields.io/pypi/v/migradiff)](https://pypi.org/project/migradiff/)
