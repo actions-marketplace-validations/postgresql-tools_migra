@@ -2,8 +2,6 @@ from __future__ import unicode_literals
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # ---- compare_schemas unit tests (mocked inspectors) ----
 
 

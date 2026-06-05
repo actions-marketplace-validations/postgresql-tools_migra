@@ -1,9 +1,6 @@
 from __future__ import unicode_literals
-
 import io
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 def outs():
@@ -111,8 +108,6 @@ class TestExplainDriftErrors:
 
     def test_api_key_flag_used(self):
         from migra.command import parse_args, run
-
-        mock_schema = {"inspector": MagicMock(), "table_sizes": {}}
 
         with patch("schemainspect.get_inspector", return_value=MagicMock()):
             with patch("migra.db_inspector._fetch_table_sizes", return_value={}):

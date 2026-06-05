@@ -2,8 +2,6 @@ from __future__ import unicode_literals
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestCredentialSafety:
     def test_credentials_not_in_error_messages(self):

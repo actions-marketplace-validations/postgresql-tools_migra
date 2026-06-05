@@ -583,7 +583,7 @@ def run(args, out=None, err=None):
             return 1
 
         try:
-            import anthropic  # noqa: F401
+            import anthropic  # noqa: F401, F811
         except ImportError:
             print(
                 "MigraDiff: --explain-drift requires the AI extras.",
@@ -673,7 +673,7 @@ def run(args, out=None, err=None):
             return 1
 
         try:
-            import anthropic  # noqa: F401
+            import anthropic  # noqa: F401, F811
         except ImportError:
             print(
                 "MigraDiff: --generate requires the AI extras.",
@@ -975,7 +975,7 @@ def _run_inner(args, out=None, err=None):
             from .ai_explain import AIExplainer, resolve_api_key, redact_api_key
 
             try:
-                import anthropic  # noqa: F401
+                import anthropic  # noqa: F401, F811, F811
             except ImportError:
                 print(
                     "MigraDiff: --explain requires the AI extras.",
@@ -1023,7 +1023,7 @@ def _run_inner(args, out=None, err=None):
             from .ai_explain import AIRollback, resolve_api_key, redact_api_key
 
             try:
-                import anthropic  # noqa: F401, F811
+                import anthropic  # noqa: F401, F811, F811
             except ImportError:
                 print(
                     "MigraDiff: --rollback requires the AI extras.",
@@ -1084,7 +1084,7 @@ def _run_inner(args, out=None, err=None):
             from .ai_explain import AIAdvisor, resolve_api_key, redact_api_key
 
             try:
-                import anthropic  # noqa: F401, F811
+                import anthropic  # noqa: F401, F811, F811
             except ImportError:
                 print(
                     "MigraDiff: --advise requires the AI extras.",
