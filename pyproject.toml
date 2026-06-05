@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "migradiff"
-version = "1.5.1"
+version = "1.5.2"
 authors = [ "MigraDiff Team <migradiff@anomalyco.com>",]
 license = "MIT"
 readme = "README.md"
@@ -11,11 +11,11 @@ homepage = "https://github.com/migradiff/migra"
 packages = [{ include = "migra" }]
 
 [tool.poetry.dependencies]
-python = ">=3.7,<4"
+python = ">=3.10,<4"
 sqlbag = "*"
 six = "*"
-# schemainspect = {path="../schemainspect", develop=true}
 schemainspect = ">=3.1.1663587362"
+setuptools = "*"
 psycopg2-binary = { version="*", optional = true }
 anthropic = { version = ">=0.20.0", optional = true }
 
@@ -43,5 +43,5 @@ include_trailing_comma = true
 line_length = 88
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=1.0.0", "setuptools"]
 build-backend = "poetry.core.masonry.api"

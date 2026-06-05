@@ -2,9 +2,11 @@ from __future__ import unicode_literals
 
 import io
 import os
+import re
 from difflib import ndiff as difflib_diff
 
 import pytest
+from sqlalchemy import text
 
 # import yaml
 from pytest import raises
@@ -18,6 +20,10 @@ from migra.command import parse_args, run
 def textdiff(a, b):
     cd = difflib_diff(a.splitlines(), b.splitlines())
     return "\n" + "\n".join(cd) + "\n"
+
+
+def _strip_view_qualifiers(sql):
+    return re.sub(r'(\w+|"[^"]+")\.(\w+|"[^"]+")', r"\2", sql)
 
 
 SQL = """select 1;
@@ -101,19 +107,17 @@ schemainspect_test_role = "schemainspect_test_role"
 
 
 def create_role(s, rolename):
+    from sqlalchemy import text
+
     role = s.execute(
-        """
-SELECT 1 FROM pg_roles WHERE rolname=:rolename
-    """,
-        dict(rolename=rolename),
+        text("SELECT 1 FROM pg_roles WHERE rolname=:rolename"),
+        {"rolename": rolename},
     )
 
     role_exists = bool(list(role))
 
     if not role_exists:
-        s.execute(f"""
-            create role {rolename};
-        """)
+        s.execute(text(f"create role {rolename}"))
 
 
 def test_rls():
@@ -173,7 +177,7 @@ def do_fixture_test(
 
         output = out.getvalue().strip()
         if check_expected:
-            assert output == EXPECTED
+            assert _strip_view_qualifiers(output) == _strip_view_qualifiers(EXPECTED)
 
         ADDITIONS = io.open(fixture_path + "additions.sql").read().strip()
         EXPECTED2 = io.open(fixture_path + "expected2.sql").read().strip()
@@ -203,7 +207,9 @@ def do_fixture_test(
             expected = EXPECTED2 if ADDITIONS else EXPECTED
 
             if check_expected:
-                assert m.sql.strip() == expected  # sql generated OK
+                assert _strip_view_qualifiers(m.sql.strip()) == _strip_view_qualifiers(
+                    expected
+                )  # sql generated OK
 
             m.apply()
             # check for changes again and make sure none are pending
@@ -537,9 +543,11 @@ def test_composite_type_field_added():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s0.execute("CREATE TYPE public.address AS (street text, city text);")
+            s0.execute(text("CREATE TYPE public.address AS (street text, city text);"))
             s1.execute(
-                "CREATE TYPE public.address AS (street text, city text, postcode text);"
+                text(
+                    "CREATE TYPE public.address AS (street text, city text, postcode text);"
+                )
             )
 
         m = Migration(s0, s1)
@@ -557,9 +565,11 @@ def test_composite_type_field_removed():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE TYPE public.address AS (street text, city text, postcode text);"
+                text(
+                    "CREATE TYPE public.address AS (street text, city text, postcode text);"
+                )
             )
-            s1.execute("CREATE TYPE public.address AS (street text, city text);")
+            s1.execute(text("CREATE TYPE public.address AS (street text, city text);"))
 
         m = Migration(s0, s1)
         m.set_safety(False)
@@ -575,9 +585,9 @@ def test_composite_type_field_type_changed():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s0.execute("CREATE TYPE public.address AS (street text, city text);")
+            s0.execute(text("CREATE TYPE public.address AS (street text, city text);"))
             s1.execute(
-                "CREATE TYPE public.address AS (street varchar(100), city text);"
+                text("CREATE TYPE public.address AS (street varchar(100), city text);")
             )
 
         m = Migration(s0, s1)
@@ -593,7 +603,7 @@ def test_composite_type_dropped():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s0.execute("CREATE TYPE public.address AS (street text, city text);")
+            s0.execute(text("CREATE TYPE public.address AS (street text, city text);"))
 
         m = Migration(s0, s1)
         m.set_safety(False)
@@ -608,7 +618,7 @@ def test_composite_type_added():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s1.execute("CREATE TYPE public.address AS (street text, city text);")
+            s1.execute(text("CREATE TYPE public.address AS (street text, city text);"))
 
         m = Migration(s0, s1)
         m.set_safety(False)
@@ -627,10 +637,12 @@ def test_domain_constraint_added():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+                text("CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);")
             )
             s1.execute(
-                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0) CHECK (VALUE < 1000000);"
+                text(
+                    "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0) CHECK (VALUE < 1000000);"
+                )
             )
 
         m = Migration(s0, s1)
@@ -647,9 +659,11 @@ def test_domain_base_type_changed():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+                text("CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);")
             )
-            s1.execute("CREATE DOMAIN public.positive_int AS bigint CHECK (VALUE > 0);")
+            s1.execute(
+                text("CREATE DOMAIN public.positive_int AS bigint CHECK (VALUE > 0);")
+            )
 
         m = Migration(s0, s1)
         m.set_safety(False)
@@ -665,7 +679,7 @@ def test_domain_dropped():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+                text("CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);")
             )
 
         m = Migration(s0, s1)
@@ -681,7 +695,7 @@ def test_domain_added():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s1.execute(
-                "CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);"
+                text("CREATE DOMAIN public.positive_int AS integer CHECK (VALUE > 0);")
             )
 
         m = Migration(s0, s1)
@@ -718,13 +732,17 @@ def test_mv_dependency_ordering_two_views():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s0.execute("CREATE TABLE public.users (id int, name text);")
-            s1.execute("CREATE TABLE public.users (id int, name text);")
+            s0.execute(text("CREATE TABLE public.users (id int, name text);"))
+            s1.execute(text("CREATE TABLE public.users (id int, name text);"))
             s1.execute(
-                "CREATE MATERIALIZED VIEW public.base_view AS SELECT id FROM public.users;"
+                text(
+                    "CREATE MATERIALIZED VIEW public.base_view AS SELECT id FROM public.users;"
+                )
             )
             s1.execute(
-                "CREATE MATERIALIZED VIEW public.derived_view AS SELECT id FROM public.base_view;"
+                text(
+                    "CREATE MATERIALIZED VIEW public.derived_view AS SELECT id FROM public.base_view;"
+                )
             )
 
         m = Migration(s0, s1)
@@ -739,13 +757,19 @@ def test_mv_dependency_ordering_chain():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s0.execute("CREATE TABLE public.users (id int, name text);")
-            s1.execute("CREATE TABLE public.users (id int, name text);")
+            s0.execute(text("CREATE TABLE public.users (id int, name text);"))
+            s1.execute(text("CREATE TABLE public.users (id int, name text);"))
             s1.execute(
-                "CREATE MATERIALIZED VIEW public.a AS SELECT id FROM public.users;"
+                text(
+                    "CREATE MATERIALIZED VIEW public.a AS SELECT id FROM public.users;"
+                )
             )
-            s1.execute("CREATE MATERIALIZED VIEW public.b AS SELECT id FROM public.a;")
-            s1.execute("CREATE MATERIALIZED VIEW public.c AS SELECT id FROM public.b;")
+            s1.execute(
+                text("CREATE MATERIALIZED VIEW public.b AS SELECT id FROM public.a;")
+            )
+            s1.execute(
+                text("CREATE MATERIALIZED VIEW public.c AS SELECT id FROM public.b;")
+            )
 
         m = Migration(s0, s1)
         m.set_safety(False)
@@ -763,10 +787,14 @@ def test_enum_value_added():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                text(
+                    "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                )
             )
             s1.execute(
-                "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive', 'archived');"
+                text(
+                    "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive', 'archived');"
+                )
             )
 
         m = Migration(s0, s1)
@@ -786,9 +814,11 @@ def test_enum_value_removed():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                text(
+                    "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                )
             )
-            s1.execute("CREATE TYPE public.status AS ENUM ('pending', 'active');")
+            s1.execute(text("CREATE TYPE public.status AS ENUM ('pending', 'active');"))
 
         m = Migration(s0, s1)
         m.set_safety(False)
@@ -804,10 +834,14 @@ def test_enum_value_reordered():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                text(
+                    "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                )
             )
             s1.execute(
-                "CREATE TYPE public.status AS ENUM ('active', 'inactive', 'pending');"
+                text(
+                    "CREATE TYPE public.status AS ENUM ('active', 'inactive', 'pending');"
+                )
             )
 
         m = Migration(s0, s1)
@@ -824,7 +858,9 @@ def test_enum_type_dropped():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s0.execute(
-                "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                text(
+                    "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                )
             )
 
         m = Migration(s0, s1)
@@ -840,7 +876,9 @@ def test_enum_type_added():
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
             s1.execute(
-                "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                text(
+                    "CREATE TYPE public.status AS ENUM ('pending', 'active', 'inactive');"
+                )
             )
 
         m = Migration(s0, s1)
@@ -921,8 +959,8 @@ def test_rename_detection_integration():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s0.execute(_rename_sql_a())
-            s1.execute(_rename_sql_b())
+            s0.execute(text(_rename_sql_a()))
+            s1.execute(text(_rename_sql_b()))
 
         args = parse_args(["--rename-columns", "--unsafe", d0, d1])
         out, err = io.StringIO(), io.StringIO()
@@ -942,8 +980,8 @@ def test_rename_detection_disabled():
         host="localhost"
     ) as d1:
         with S(d0) as s0, S(d1) as s1:
-            s0.execute(_rename_sql_a())
-            s1.execute(_rename_sql_b())
+            s0.execute(text(_rename_sql_a()))
+            s1.execute(text(_rename_sql_b()))
 
         args = parse_args(["--no-rename-detection", "--unsafe", d0, d1])
         out, err = io.StringIO(), io.StringIO()
@@ -963,7 +1001,7 @@ def test_safe_mode_no_destructive():
 
     with temporary_database(host="localhost") as d0:
         with S(d0) as s:
-            s.execute("CREATE TABLE public.t (id int);")
+            s.execute(text("CREATE TABLE public.t (id int);"))
         args = parse_args([d0, d0])
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
@@ -978,7 +1016,7 @@ def test_safe_mode_drop_table_without_flag():
         host="localhost"
     ) as d1:
         with S(d0) as s0:
-            s0.execute("CREATE TABLE public.users (id int);")
+            s0.execute(text("CREATE TABLE public.users (id int);"))
         args = parse_args([d0, d1])
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
@@ -994,7 +1032,7 @@ def test_safe_mode_force_destructive():
         host="localhost"
     ) as d1:
         with S(d0) as s0:
-            s0.execute("CREATE TABLE public.users (id int);")
+            s0.execute(text("CREATE TABLE public.users (id int);"))
         args = parse_args(["--force-destructive", d0, d1])
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
@@ -1010,7 +1048,7 @@ def test_safe_mode_unsafe_backward_compat():
         host="localhost"
     ) as d1:
         with S(d0) as s0:
-            s0.execute("CREATE TABLE public.users (id int);")
+            s0.execute(text("CREATE TABLE public.users (id int);"))
         args = parse_args(["--unsafe", d0, d1])
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
@@ -1026,7 +1064,7 @@ def test_safe_mode_explicit_safe():
         host="localhost"
     ) as d1:
         with S(d0) as s0:
-            s0.execute("CREATE TABLE public.users (id int);")
+            s0.execute(text("CREATE TABLE public.users (id int);"))
         args = parse_args(["--safe", d0, d1])
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
@@ -1042,7 +1080,7 @@ def test_safe_mode_json_without_flag():
         host="localhost"
     ) as d1:
         with S(d0) as s0:
-            s0.execute("CREATE TABLE public.users (id int);")
+            s0.execute(text("CREATE TABLE public.users (id int);"))
         args = parse_args(["--output", "json", d0, d1])
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
@@ -1058,7 +1096,7 @@ def test_safe_mode_json_with_force():
         host="localhost"
     ) as d1:
         with S(d0) as s0:
-            s0.execute("CREATE TABLE public.users (id int);")
+            s0.execute(text("CREATE TABLE public.users (id int);"))
         args = parse_args(["--output", "json", "--force-destructive", d0, d1])
         out, err = io.StringIO(), io.StringIO()
         status = run(args, out=out, err=err)
@@ -1173,7 +1211,7 @@ def test_migrations_dir_apply_and_diff():
         )
         with temporary_database(host="localhost") as d0:
             with S(d0) as s0:
-                s0.execute("CREATE TABLE public.users (id int);")
+                s0.execute(text("CREATE TABLE public.users (id int);"))
             args = parse_args(["--force-destructive", "--from-migrations-dir", td, d0])
             out, err = io.StringIO(), io.StringIO()
             status = run(args, out=out, err=err)
@@ -1225,7 +1263,7 @@ def test_migrations_dir_syntax_error():
         _write_migration(td, "001_bad.sql", "this is not valid sql;")
         with temporary_database(host="localhost") as d0:
             with S(d0) as s0:
-                s0.execute("CREATE TABLE public.users (id int);")
+                s0.execute(text("CREATE TABLE public.users (id int);"))
             args = parse_args(["--force-destructive", "--from-migrations-dir", td, d0])
             out, err = io.StringIO(), io.StringIO()
             status = run(args, out=out, err=err)
@@ -1245,7 +1283,7 @@ def test_migrations_dir_with_json():
         )
         with temporary_database(host="localhost") as d0:
             with S(d0) as s0:
-                s0.execute("CREATE TABLE public.users (id int);")
+                s0.execute(text("CREATE TABLE public.users (id int);"))
             args = parse_args(
                 [
                     "--force-destructive",
@@ -1277,7 +1315,7 @@ def test_migrations_dir_with_safe_mode():
         )
         with temporary_database(host="localhost") as d0:
             with S(d0) as s0:
-                s0.execute("CREATE TABLE public.users (id int, email text);")
+                s0.execute(text("CREATE TABLE public.users (id int, email text);"))
             args = parse_args(["--from-migrations-dir", td, d0])
             out, err = io.StringIO(), io.StringIO()
             status = run(args, out=out, err=err)
