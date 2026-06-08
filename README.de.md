@@ -50,7 +50,7 @@ Erfordert Python 3.10+ und eine laufende PostgreSQL-Instanz (12+).
 Zur Installation aus dem Quellcode:
 
 ```bash
-git clone https://github.com/migradiff/migra
+git clone https://github.com/postgresql-tools/migra
 cd migra
 pip install -e .
 ```
@@ -236,7 +236,7 @@ docker compose down -v
 Keine Python-Umgebung? Verwenden Sie das offizielle Image:
 
 ```bash
-docker run --rm ghcr.io/migradiff/migra \
+docker run --rm ghcr.io/postgresql-tools/migra \
   postgres://db_a postgres://db_b
 ```
 
@@ -247,7 +247,7 @@ docker run --rm ghcr.io/migradiff/migra \
 Fügen Sie Schema-Diffing zu Ihrem Pull-Request-Workflow hinzu:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -256,7 +256,7 @@ Fügen Sie Schema-Diffing zu Ihrem Pull-Request-Workflow hinzu:
 Lassen Sie den Build automatisch fehlschlagen, wenn destruktive Operationen erkannt werden:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -266,7 +266,7 @@ Lassen Sie den Build automatisch fehlschlagen, wenn destruktive Operationen erka
 Verwenden Sie Schema-Dump-Dateien anstelle von Live-Verbindungen:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_file: schema_production.sql
     head_file: schema_branch.sql
@@ -281,7 +281,7 @@ Vollständige Konfigurationsoptionen finden Sie unter [docs/action-usage.md](doc
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/migradiff/migra
+  - repo: https://github.com/postgresql-tools/migra
     rev: v1.1.0
     hooks:
       - id: migra
@@ -316,8 +316,8 @@ Vollständige Konfigurationsoptionen finden Sie in der Datei `pre-commit-config.
 | --schema-Flag | Grenzfälle in Multi-Schema-DBs | Kommagetrennt, schemaübergreifende Abhängigkeiten gelöst |
 | pg_dump-Eingabe | Nicht unterstützt | Erstklassiger `--from-file`-Modus |
 | JSON-Ausgabe | Nicht unterstützt | `--output json` mit Risikoklassifizierung |
-| Docker-Image | Keines | `ghcr.io/migradiff/migra` |
-| GitHub Action | Keine | `migradiff/migra-action` |
+| Docker-Image | Keines | `ghcr.io/postgresql-tools/migra` |
+| GitHub Action | Keine | `postgresql-tools/migra-action` |
 | Pre-commit-Hook | Keiner | `.pre-commit-hooks.yaml` |
 | Entwicklungsumgebung | Manuelle Docker-Befehle | `docker compose up -d` |
 | KI-Erklärung | Keine | `--explain`-Flag mit Claude — einfache Diff-Erklärung, Risikoanalyse, sicherere Alternativen |

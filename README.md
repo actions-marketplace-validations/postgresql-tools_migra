@@ -61,7 +61,7 @@ Requires Python 3.10+ and a running PostgreSQL instance (12+).
 To install from source:
 
 ```bash
-git clone https://github.com/migradiff/migra
+git clone https://github.com/postgresql-tools/migra
 cd migra
 pip install -e .
 ```
@@ -301,7 +301,7 @@ docker compose down -v
 No Python environment? Use the official image:
 
 ```bash
-docker run --rm ghcr.io/migradiff/migra \
+docker run --rm ghcr.io/postgresql-tools/migra \
   postgres://db_a postgres://db_b
 ```
 
@@ -312,7 +312,7 @@ docker run --rm ghcr.io/migradiff/migra \
 Add schema diffing to your pull request workflow:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -321,7 +321,7 @@ Add schema diffing to your pull request workflow:
 Fail the build automatically if destructive operations are detected:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -331,7 +331,7 @@ Fail the build automatically if destructive operations are detected:
 Use schema dump files instead of live connections:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_file: schema_production.sql
     head_file: schema_branch.sql
@@ -346,7 +346,7 @@ See [docs/action-usage.md](docs/action-usage.md) for full configuration options.
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/migradiff/migra
+  - repo: https://github.com/postgresql-tools/migra
     rev: v1.1.0
     hooks:
       - id: migra
@@ -382,8 +382,8 @@ configuration options.
 | --schema flag | Edge cases in multi-schema DBs | Comma-separated, cross-schema dependencies resolved |
 | pg_dump input | Not supported | First-class `--from-file` mode |
 | JSON output | Not supported | `--output json` with risk classification |
-| Docker image | None | `ghcr.io/migradiff/migra` |
-| GitHub Action | None | `migradiff/migra-action` |
+| Docker image | None | `ghcr.io/postgresql-tools/migra` |
+| GitHub Action | None | `postgresql-tools/migra-action` |
 | Pre-commit hook | None | `.pre-commit-hooks.yaml` |
 | Dev environment | Manual Docker commands | `docker compose up -d` |
 | AI explanation | None | `--explain` flag with Claude — plain English diff explanation, risk analysis, safer alternatives |

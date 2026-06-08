@@ -50,7 +50,7 @@ pip install migradiff
 从源码安装：
 
 ```bash
-git clone https://github.com/migradiff/migra
+git clone https://github.com/postgresql-tools/migra
 cd migra
 pip install -e .
 ```
@@ -236,7 +236,7 @@ docker compose down -v
 没有 Python 环境？使用官方镜像：
 
 ```bash
-docker run --rm ghcr.io/migradiff/migra \
+docker run --rm ghcr.io/postgresql-tools/migra \
   postgres://db_a postgres://db_b
 ```
 
@@ -247,7 +247,7 @@ docker run --rm ghcr.io/migradiff/migra \
 将模式差异对比添加到您的拉取请求工作流中：
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -256,7 +256,7 @@ docker run --rm ghcr.io/migradiff/migra \
 检测到破坏性操作时自动使构建失败：
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -266,7 +266,7 @@ docker run --rm ghcr.io/migradiff/migra \
 使用模式转储文件而不是实时连接：
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_file: schema_production.sql
     head_file: schema_branch.sql
@@ -281,7 +281,7 @@ docker run --rm ghcr.io/migradiff/migra \
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/migradiff/migra
+  - repo: https://github.com/postgresql-tools/migra
     rev: v1.1.0
     hooks:
       - id: migra
@@ -316,8 +316,8 @@ repos:
 | --schema 标志 | 多模式数据库中存在边缘情况 | 逗号分隔，跨模式依赖已解决 |
 | pg_dump 输入 | 不支持 | 一流的 `--from-file` 模式 |
 | JSON 输出 | 不支持 | `--output json` 带风险分类 |
-| Docker 镜像 | 无 | `ghcr.io/migradiff/migra` |
-| GitHub Action | 无 | `migradiff/migra-action` |
+| Docker 镜像 | 无 | `ghcr.io/postgresql-tools/migra` |
+| GitHub Action | 无 | `postgresql-tools/migra-action` |
 | Pre-commit 钩子 | 无 | `.pre-commit-hooks.yaml` |
 | 开发环境 | 手动 Docker 命令 | `docker compose up -d` |
 | AI 解释 | 无 | `--explain` 标志配合 Claude —— 通俗语言差异解释、风险分析、更安全的替代方案 |

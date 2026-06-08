@@ -50,7 +50,7 @@ pip install migradiff
 स्रोत से इंस्टॉल करने के लिए:
 
 ```bash
-git clone https://github.com/migradiff/migra
+git clone https://github.com/postgresql-tools/migra
 cd migra
 pip install -e .
 ```
@@ -236,7 +236,7 @@ docker compose down -v
 कोई Python वातावरण नहीं? आधिकारिक इमेज का उपयोग करें:
 
 ```bash
-docker run --rm ghcr.io/migradiff/migra \
+docker run --rm ghcr.io/postgresql-tools/migra \
   postgres://db_a postgres://db_b
 ```
 
@@ -247,7 +247,7 @@ docker run --rm ghcr.io/migradiff/migra \
 अपने पुल रिक्वेस्ट वर्कफ़्लो में स्कीमा डिफिंग जोड़ें:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -256,7 +256,7 @@ docker run --rm ghcr.io/migradiff/migra \
 यदि विनाशकारी संचालन का पता चलता है तो बिल्ड को स्वचालित रूप से विफल करें:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -266,7 +266,7 @@ docker run --rm ghcr.io/migradiff/migra \
 लाइव कनेक्शन के बजाय स्कीमा डंप फ़ाइलों का उपयोग करें:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_file: schema_production.sql
     head_file: schema_branch.sql
@@ -281,7 +281,7 @@ docker run --rm ghcr.io/migradiff/migra \
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/migradiff/migra
+  - repo: https://github.com/postgresql-tools/migra
     rev: v1.1.0
     hooks:
       - id: migra
@@ -316,8 +316,8 @@ repos:
 | --schema फ्लैग | मल्टी-स्कीमा DB में एज केस | अल्पविराम-पृथक, क्रॉस-स्कीमा निर्भरताएं हल |
 | pg_dump इनपुट | समर्थित नहीं | प्रथम श्रेणी `--from-file` मोड |
 | JSON आउटपुट | समर्थित नहीं | `--output json` जोखिम वर्गीकरण के साथ |
-| Docker इमेज | कोई नहीं | `ghcr.io/migradiff/migra` |
-| GitHub Action | कोई नहीं | `migradiff/migra-action` |
+| Docker इमेज | कोई नहीं | `ghcr.io/postgresql-tools/migra` |
+| GitHub Action | कोई नहीं | `postgresql-tools/migra-action` |
 | Pre-commit हुक | कोई नहीं | `.pre-commit-hooks.yaml` |
 | डेव वातावरण | मैनुअल Docker कमांड | `docker compose up -d` |
 | AI स्पष्टीकरण | कोई नहीं | Claude के साथ `--explain` फ्लैग — सादी अंग्रेजी डिफ स्पष्टीकरण, जोखिम विश्लेषण, सुरक्षित विकल्प |

@@ -50,7 +50,7 @@ pip install migradiff
 להתקנה מקוד המקור:
 
 ```bash
-git clone https://github.com/migradiff/migra
+git clone https://github.com/postgresql-tools/migra
 cd migra
 pip install -e .
 ```
@@ -236,7 +236,7 @@ docker compose down -v
 אין סביבת Python? השתמשו בתמונה הרשמית:
 
 ```bash
-docker run --rm ghcr.io/migradiff/migra \
+docker run --rm ghcr.io/postgresql-tools/migra \
   postgres://db_a postgres://db_b
 ```
 
@@ -247,7 +247,7 @@ docker run --rm ghcr.io/migradiff/migra \
 הוסיפו השוואת סכמות לוורק פלו של בקשת המשיכה (pull request) שלכם:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -256,7 +256,7 @@ docker run --rm ghcr.io/migradiff/migra \
 גרמו לבנייה להיכשל באופן אוטומטי אם מתגלות פעולות הרסניות:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -266,7 +266,7 @@ docker run --rm ghcr.io/migradiff/migra \
 השתמשו בקבצי דמפ סכמה במקום חיבורים חיים:
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_file: schema_production.sql
     head_file: schema_branch.sql
@@ -281,7 +281,7 @@ docker run --rm ghcr.io/migradiff/migra \
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/migradiff/migra
+  - repo: https://github.com/postgresql-tools/migra
     rev: v1.1.0
     hooks:
       - id: migra
@@ -316,8 +316,8 @@ repos:
 | דגל --schema | מקרי קצה במסדי נתונים מרובי סכמות | מופרד בפסיקים, תלויות חוצות סכמה נפתרו |
 | קלט pg_dump | לא נתמך | מצב `--from-file` מדרגה ראשונה |
 | פלט JSON | לא נתמך | `--output json` עם סיווג סיכונים |
-| תמונת Docker | אין | `ghcr.io/migradiff/migra` |
-| GitHub Action | אין | `migradiff/migra-action` |
+| תמונת Docker | אין | `ghcr.io/postgresql-tools/migra` |
+| GitHub Action | אין | `postgresql-tools/migra-action` |
 | הוק Pre-commit | אין | `.pre-commit-hooks.yaml` |
 | סביבת פיתוח | פקודות Docker ידניות | `docker compose up -d` |
 | הסבר AI | אין | דגל `--explain` עם Claude — הסבר הבדלים בשפה פשוטה, ניתוח סיכונים, חלופות בטוחות יותר |

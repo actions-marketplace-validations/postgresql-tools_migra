@@ -6,8 +6,8 @@ license = "MIT"
 readme = "README.md"
 description = "Like `diff` but for PostgreSQL schemas — actively maintained fork"
 
-repository = "https://github.com/migradiff/migra"
-homepage = "https://github.com/migradiff/migra"
+repository = "https://github.com/postgresql-tools/migra"
+homepage = "https://github.com/postgresql-tools/migra"
 packages = [{ include = "migra" }]
 
 [tool.poetry.dependencies]

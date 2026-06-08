@@ -50,7 +50,7 @@ Nécessite Python 3.10+ et une instance PostgreSQL en cours d'exécution (12+).
 Pour installer depuis les sources :
 
 ```bash
-git clone https://github.com/migradiff/migra
+git clone https://github.com/postgresql-tools/migra
 cd migra
 pip install -e .
 ```
@@ -236,7 +236,7 @@ docker compose down -v
 Pas d'environnement Python ? Utilisez l'image officielle :
 
 ```bash
-docker run --rm ghcr.io/migradiff/migra \
+docker run --rm ghcr.io/postgresql-tools/migra \
   postgres://db_a postgres://db_b
 ```
 
@@ -247,7 +247,7 @@ docker run --rm ghcr.io/migradiff/migra \
 Ajoutez la comparaison de schéma à votre workflow de pull request :
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -256,7 +256,7 @@ Ajoutez la comparaison de schéma à votre workflow de pull request :
 Échouez automatiquement la build si des opérations destructrices sont détectées :
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -266,7 +266,7 @@ Ajoutez la comparaison de schéma à votre workflow de pull request :
 Utilisez des fichiers de dump de schéma au lieu de connexions en direct :
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_file: schema_production.sql
     head_file: schema_branch.sql
@@ -281,7 +281,7 @@ Voir [docs/action-usage.md](docs/action-usage.md) pour les options de configurat
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/migradiff/migra
+  - repo: https://github.com/postgresql-tools/migra
     rev: v1.1.0
     hooks:
       - id: migra
@@ -316,8 +316,8 @@ Voir `pre-commit-config.example.yaml` à la racine du dépôt pour les options d
 | Drapeau --schema | Cas limites dans les bases multi-schémas | Séparés par des virgules, dépendances inter-schémas résolues |
 | Entrée pg_dump | Non supporté | Mode `--from-file` de première classe |
 | Sortie JSON | Non supporté | `--output json` avec classification des risques |
-| Image Docker | Aucune | `ghcr.io/migradiff/migra` |
-| GitHub Action | Aucune | `migradiff/migra-action` |
+| Image Docker | Aucune | `ghcr.io/postgresql-tools/migra` |
+| GitHub Action | Aucune | `postgresql-tools/migra-action` |
 | Hook Pre-commit | Aucun | `.pre-commit-hooks.yaml` |
 | Environnement de développement | Commandes Docker manuelles | `docker compose up -d` |
 | Explication IA | Aucune | Drapeau `--explain` avec Claude — explication de différence en langage clair, analyse des risques, alternatives plus sûres |
