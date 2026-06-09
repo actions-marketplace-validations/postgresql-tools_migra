@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "migradiff"
-version = "1.5.2"
+version = "1.7.1"
 authors = [ "MigraDiff Team <migradiff@anomalyco.com>",]
 license = "MIT"
 readme = "README.md"
@@ -8,6 +8,11 @@ description = "Like `diff` but for PostgreSQL schemas — actively maintained fo
 
 repository = "https://github.com/postgresql-tools/migra"
 homepage = "https://github.com/postgresql-tools/migra"
+
+[project.urls]
+Repository = "https://github.com/postgresql-tools/migra"
+"Bug Tracker" = "https://github.com/postgresql-tools/migra/issues"
+
 packages = [{ include = "migra" }]
 
 [tool.poetry.dependencies]
