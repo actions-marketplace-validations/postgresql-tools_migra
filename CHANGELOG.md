@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ## [1.7.1] - 2026-06-08
-- Fix: Update PyPI repository URLs to postgresql-tools/migra
+- Fix: Update PyPI homepage and repository URLs to postgresql-tools/migra
 
 ## [1.6.0] — 2026-06-04
 

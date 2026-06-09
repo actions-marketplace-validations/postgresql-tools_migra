@@ -1,3 +1,13 @@
+[project]
+name = "migradiff"
+version = "1.7.1"
+description = "Like `diff` but for PostgreSQL schemas — actively maintained fork"
+homepage = "https://github.com/postgresql-tools/migra"
+
+[project.urls]
+Repository = "https://github.com/postgresql-tools/migra"
+"Bug Tracker" = "https://github.com/postgresql-tools/migra/issues"
+
 [tool.poetry]
 name = "migradiff"
 version = "1.7.1"
