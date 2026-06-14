@@ -2,7 +2,7 @@
 # Copy this to your project and adjust the rev to the latest release tag.
 
 repos:
-  - repo: https://github.com/migradiff/migra
+  - repo: https://github.com/postgresql-tools/migra
     rev: v1.1.0
     hooks:
       - id: migra

@@ -6,7 +6,7 @@
 
 - **Package:** `migradiff` (PyPI)
 - **CLI:** `migra` (backward compatible)
-- **Repo:** https://github.com/migradiff/migra
+- **Repo:** https://github.com/postgresql-tools/migra
 - **Maintainer:** Leo (Lateos)
 - **License:** MIT
 
@@ -325,4 +325,4 @@ The `schemainspect` package (upstream: djrobstep, unmaintained) uses deprecated 
 
 **Document version:** Updated June 4, 2026 (post-Session 018)  
 **Last updated by:** Claude (with Leo)  
-**Repository:** https://github.com/migradiff/migra
+**Repository:** https://github.com/postgresql-tools/migra

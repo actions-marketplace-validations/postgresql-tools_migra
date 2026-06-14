@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-06-08
+- Fix: Use PEP 621 [project] table for PyPI metadata (homepage, repository, bug tracker)
+
+## [1.7.1] - 2026-06-08
+- Fix: Update PyPI homepage and repository URLs to postgresql-tools/migra
+
 ## [1.6.0] — 2026-06-04
 
 ### Added

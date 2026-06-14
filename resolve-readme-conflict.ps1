@@ -40,7 +40,7 @@ Requires Python 3.10+ and a running PostgreSQL instance (12+).
 To install from source:
 
 ```bash
-git clone https://github.com/migradiff/migra
+git clone https://github.com/postgresql-tools/migra
 cd migra
 pip install -e .
 ```

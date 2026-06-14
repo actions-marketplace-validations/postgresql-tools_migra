@@ -1,14 +1,27 @@
+[project]
+name = "migradiff"
+version = "1.7.2"
+description = "Like `diff` but for PostgreSQL schemas — actively maintained fork"
+homepage = "https://github.com/postgresql-tools/migra"
+
+[project.urls]
+Repository = "https://github.com/postgresql-tools/migra"
+"Bug Tracker" = "https://github.com/postgresql-tools/migra/issues"
+
 [tool.poetry]
 name = "migradiff"
-version = "1.5.2"
+version = "1.7.2"
 authors = [ "MigraDiff Team <migradiff@anomalyco.com>",]
 license = "MIT"
 readme = "README.md"
 description = "Like `diff` but for PostgreSQL schemas — actively maintained fork"
 
-repository = "https://github.com/migradiff/migra"
-homepage = "https://github.com/migradiff/migra"
+repository = "https://github.com/postgresql-tools/migra"
+homepage = "https://github.com/postgresql-tools/migra"
 packages = [{ include = "migra" }]
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/postgresql-tools/migra/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4"

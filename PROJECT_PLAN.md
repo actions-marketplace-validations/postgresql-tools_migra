@@ -1,352 +1,338 @@
-# MigraDiff — Project Plan
+# MigraDiff Project Plan (Updated)
 
-**Project:** MigraDiff (fork of djrobstep/migra)
-**Package:** `migradiff` (PyPI) · CLI command: `migra`
-**License:** MIT
-**Repository:** https://github.com/migradiff/migra
-**Maintainer:** Leo (Roongrunchai Chongolnee) · leo@lateos.ai
-**Parent company:** Lateos (lateos.ai)
-**Current version:** 1.4.0
-**Last updated:** June 1, 2026
+## Project Overview
 
----
+**MigraDiff** is an actively maintained fork of djrobstep/migra (PostgreSQL schema diff tool). 
 
-## 1. Executive Summary
-
-MigraDiff is the actively maintained fork of `djrobstep/migra`, the
-PostgreSQL schema diff tool deprecated in 2024. It compares two
-PostgreSQL schemas and generates the SQL migration script needed to
-transform one into the other.
-
-The fork fixes known upstream issues, adds Python 3.12+ support, and
-extends the tool with a complete AI-powered migration assistant suite
-(explain, rollback, advise, generate). The CLI command remains `migra`
-for backward compatibility; the PyPI package is `migradiff`.
-
-MigraDiff is positioned for acquisition by Supabase or Redgate within
-2–3 years at $10–20M, built on $1–2M ARR from 200–300 paying customers.
+- **Package:** `migradiff` (PyPI)
+- **CLI:** `migra` (backward compatible)
+- **Repo:** https://github.com/postgresql-tools/migra
+- **Maintainer:** Leo (Lateos)
+- **License:** MIT
 
 ---
 
-## 2. Current State (v1.4.0)
+## Business Targets
 
-- 175 tests passing, 2 skipped, 0 failing
-- flake8: 0 warnings
-- black: clean
-- Python 3.10+ required, PostgreSQL 12+
-- Docker image: `ghcr.io/migradiff/migra`
-- GitHub Action: `migradiff/migra-action`
-- Pre-commit hook available
-- AI features: `pip install migradiff[ai]` (optional, uses user's
-  own Anthropic API key — no MigraDiff infrastructure required)
-
-### Shipped Features
-
-**Core diff engine (inherited + improved):**
-- Tables, columns, constraints, indexes
-- Views and materialized views
-- Functions and stored procedures
-- Sequences, enums, composite types, domains
-- Row-Level Security (RLS) policies (fixed from upstream)
-- Foreign data wrappers
-- Column-level privileges
-- Partitioned tables
-
-**Fork additions (deterministic):**
-- `--from-file` — diff pg_dump schema files, no live connection needed
-- `--from-migrations-dir` — diff against a migrations folder
-  (Supabase, Flyway, numeric naming)
-- `--schema` — comma-separated, cross-schema dependency resolution
-- `--output json` — per-statement risk classification
-- `--unsafe` — include destructive operations in output
-- Python 3.12+ clean (no deprecation warnings)
-- Actionable error messages with object name and issue link
-- Docker image and GitHub Action
-- Pre-commit hook
-- Docker Compose dev environment
-
-**Fork additions (AI suite — v1.3.0–v1.4.0):**
-- `--explain` — plain-English migration explanation with risk analysis
-- `--rollback` — generates reversal migration SQL
-- `--advise` — deterministic + AI performance/risk assessment
-- `--generate` — writes migration SQL from plain-English description,
-  grounded in real schema from live connection or schema file
-
-**AI safety rules (`--generate`):**
-- Hard refuse on bulk destructive descriptions: "drop all", "delete all",
-  "truncate all", "drop everything", "wipe"
-- Soft warn on individual destructive operations: "drop", "delete",
-  "truncate", "remove table", "remove column"
-- All AI output marked as AI-generated in header
-- Temperature 0 for determinism (Claude Haiku)
-- Combinable with `--advise` for immediate deterministic risk feedback
+| Metric | Target | Timeline |
+|--------|--------|----------|
+| **Revenue (ARR)** | $1–2M | Year 1 |
+| **Customer Base** | 200–300 customers | Year 1 |
+| **Exit** | Supabase/Redgate | Year 2–3 |
+| **Exit Value** | $10–20M | Year 2–3 |
 
 ---
 
-## 3. Technology Stack
+## Completed Features
 
-| Layer | Technology |
-|---|---|
-| Language | Python 3.10+ |
-| Database | PostgreSQL 12+ |
-| AI model | Claude Haiku (Anthropic) via `anthropic` package |
-| AI dependency | Optional (`migradiff[ai]`), lazy import |
-| Distribution | PyPI (`migradiff`), Docker (`ghcr.io/migradiff/migra`) |
-| CI | GitHub Actions (`migradiff/migra-action`) |
-| Testing | pytest |
-| Linting | flake8, black |
-| Dev environment | Docker Compose (Postgres 16, trust auth, localhost:5432) |
+### v1.3.0 (Sessions 009–010)
+- `--explain`: plain-English explanation of migrations
+- `--from-migrations-dir`: load migrations from directory
 
----
+### v1.4.0 (Sessions 011–013)
+- `--rollback`: generates reversal migration SQL
+- `--advise`: deterministic + AI performance/risk assessment
+- `--generate`: writes migration SQL from plain-English description
 
-## 4. Development Session History
+### v1.5.0 (Session 017)
+- `--comment-on`: diffs COMMENT ON annotations on objects
 
-Each session follows a tests-first methodology: confirm runtime failures
-before implementation, no vibe-coding, explicit stop conditions, flake8
-and black clean on exit.
-
-| Session | Branch | Feature | Tests | Version |
-|---|---|---|---|---|
-| 001–008 | Various | Fork setup, upstream fixes, RLS, --from-file, --schema, JSON output, Docker, GitHub Action, pre-commit | 109 baseline | v1.0.0–v1.2.0 |
-| 009 | feat/session-009-migrations-dir | `--from-migrations-dir` | — | — |
-| 010 | feat/session-010-ai-explain | `--explain` (AIExplainer) | 36 | v1.3.0 |
-| 011 | feat/session-011-ai-rollback | `--rollback` (AIRollback) | 42 | — |
-| 012 | feat/session-012-ai-advise | `--advise` (AIAdvisor) + `classify_statement_risk()` | 33 | — |
-| 013 | feat/session-013-ai-generate | `--generate` (AIGenerator) + safety rules | 33 | v1.4.0 |
-
-**Test totals:** 175 passing, 2 skipped (226 collected including
-Postgres-dependent tests). 144 of those are AI suite tests.
+### Infrastructure (Session 018)
+- ✅ Production CI/CD pipeline
+- ✅ Branch protection on master
+- ✅ Automated PyPI releases on tags
+- ✅ GitHub Actions workflows (lint + test matrix + coverage)
 
 ---
 
-## 5. Feature Roadmap
+## Current Version
 
-### Free Tier — Remaining Sessions
+**v1.5.1** (released June 4, 2026)
 
-The free tier rule: **if it runs locally on the user's machine with
-their own credentials, it's free.**
-
-| Session | Feature | Description |
-|---|---|---|
-| 014 | `--explain-drift` | Schema drift detection and explanation between two points in time. One-time local execution is free; managed/scheduled monitoring is enterprise. |
-| 015 | `--document` | AI-generated schema documentation. One-time generation is free; continuously updated hosted documentation is enterprise. |
-| 016 | pgvector diffing | First-class support for pgvector extension objects in schema diffs. |
-
-### Enterprise Tier — Post-Free-Suite
-
-The enterprise rule: **if it requires MigraDiff to host something,
-manage something, or store something on the customer's behalf, it's
-enterprise.**
-
-| Feature | Description | Infrastructure Required |
-|---|---|---|
-| Shadow Run | Simulate migrations against ephemeral cloned databases; report locking behavior, rewrite risk, and estimated duration at actual data scale. | Firecracker microVMs, ephemeral Postgres instances, `pg_stat_activity` / `pg_locks` profiling |
-| Hosted AI key | MigraDiff absorbs Anthropic API cost; customer doesn't need their own key. Usage-metered. | API key management, metering, billing |
-| Team RBAC | Role-based access control and multi-stage approval workflows for migrations. | Account management, permissions storage |
-| SAML / SSO | Enterprise identity provider integration (SAML 2.0, OIDC). | Identity layer (`python3-saml`, `authlib`) |
-| Audit trail dashboard | Hosted dashboard showing migration history, approvals, risk assessments, and compliance evidence. | Data persistence, dashboard hosting |
-| PR comment injection | Managed GitHub App that posts migration diffs and risk assessments as PR comments automatically. | GitHub App, webhooks |
-| `--explain-drift` managed | Scheduled drift monitoring with alerts and dashboard. | Scheduled jobs, alert delivery |
-| `--document` hosted | Continuously updated schema documentation portal. | Hosting, persistence |
-| VS Code extension (premium) | Shared diff history, approval workflows in IDE, team account features. (Base extension is free and open source.) | Team account infrastructure |
-| Compliance reporting | NIST / EU AI Act mapping of schema changes to control frameworks. | Report generation, export |
+Test counts:
+- Baseline: 109 tests
+- v1.3.0: 142 tests (after --explain)
+- v1.4.0: 175 tests (after AI suite)
+- v1.5.0: 190 tests (after COMMENT ON)
 
 ---
 
-## 6. Enterprise Gating Architecture
+## Free Tier Roadmap
 
-Three layers:
+### Session 019: `--explain-drift` (7–10 days)
 
-### Layer 1 — License Key
+**Feature:** Compare two **live PostgreSQL databases** and explain differences.
 
-Offline-verifiable, HMAC-signed license key. No license server call
-required — works in air-gapped environments.
-
-```
-MIGRADIFF-ENT-{base64_encoded_payload}-{hmac_signature}
+```bash
+migra --from-db "postgresql://user:pass@old.example.com/db" \
+       --to-db "postgresql://user:pass@prod.example.com/db" \
+       --explain-drift
 ```
 
-Payload:
-```json
-{
-  "customer": "acme-corp",
-  "tier": "enterprise",
-  "features": ["shadow_run", "saml", "audit", "rbac"],
-  "issued_at": "2026-05-30",
-  "expires_at": "2027-05-30",
-  "seats": 25
-}
-```
+**Output:** Human-readable explanation of schema differences with risk categorization (BREAKING/WARNING/INFO).
 
-HMAC signed with Lateos private key. Verification uses public key
-bundled with the tool.
+**Use case:** "What changed in production? Is it safe?"
 
-### Layer 2 — Feature Flags
+**Tests:** 80+ new tests (target: 270+ total)
 
-```python
-from migra.license import require_feature
+**Release:** v1.6.0
 
-@require_feature("shadow_run")
-def run_shadow_simulation(config):
-    ...
-```
-
-Clean error on missing feature:
-```
-MigraDiff Enterprise: shadow_run requires an Enterprise license.
-Contact enterprise@lateos.ai or visit https://migradiff.com/enterprise
-```
-
-### Layer 3 — Telemetry (Enterprise Only)
-
-License validation calls home only for enterprise features (seat
-counting, usage metering). Free tier has zero telemetry.
+**Why first:**
+- Highest differentiation (competitors don't have this)
+- Reuses existing schema inspection logic
+- Fills gap: explain migrations vs. reality
 
 ---
 
-## 7. Business Model
+### Session 020: Multi-Language README (3–5 days)
 
-### Pricing Tiers (Planned)
+**Feature:** README in multiple languages (i18n).
 
-| Tier | Price | Target |
-|---|---|---|
-| Free (open source) | $0 | Individual developers, open-source projects |
-| Core support | ~$5K/year | Teams needing SLA and priority bug fixes |
-| Managed service | ~$20K/year | Teams needing Shadow Run, hosted drift monitoring, RBAC |
-| Enterprise | Custom | Large orgs needing SAML/SSO, audit compliance, on-prem |
+Supported languages:
+- 🇬🇧 English (default)
+- 🇫🇷 French (README.fr.md)
+- 🇩🇪 German (README.de.md)
+- 🇯🇵 Japanese (README.ja.md)
+- 🇨🇳 Chinese (README.zh.md)
+- 🇮🇳 Hindi (README.hi.md)
+- 🇮🇱 Hebrew (README.he.md)
 
-### Revenue Model
+**How:** 
+- Maintain main README.md (English)
+- Create translated versions in repo root
+- Link from main README
+- Use GitHub language detection for auto-redirect
 
-- Free tier builds community, adoption, and acquisition signal
-- Core support converts power users who need SLA guarantees
-- Managed service converts teams who need hosted infrastructure
-- Enterprise converts regulated industries (healthcare, fintech, gov)
+**Why:**
+- Global audience (PostgreSQL is international)
+- **Strategic focus:** India has second-largest PostgreSQL user base globally (after US)
+- Drives adoption in high-growth markets (India, China, Japan)
+- Differentiator (most tools English-only)
+- SEO boost (ranked in multiple language searches)
+- Hindi captures ~600M+ speakers in India tech ecosystem
 
-### Unit Economics Target
+**Market sizing:**
+- US: ~40% of users (English)
+- India: ~20% of users (Hindi + English)
+- Europe: ~15% of users (French, German)
+- Asia-Pacific: ~15% of users (Chinese, Japanese)
+- Israel/other: ~10% of users (Hebrew, English)
 
-- 150 Core customers × $5K = $750K
-- 50 Managed customers × $20K = $1M
-- Premium + consulting = upside
-- **Y1 ARR target: $1–2M**
-
----
-
-## 8. Go-to-Market Strategy
-
-### Phase 1 — Community Adoption (Current)
-
-- PyPI distribution (`pip install migradiff`)
-- Docker image for zero-install usage
-- GitHub Action for CI integration
-- Pre-commit hook for local development
-- README positions MigraDiff as the drop-in `migra` continuation
-- Social: Reddit r/PostgreSQL, Hacker News (Show HN), X, LinkedIn
-- `enterprise@lateos.ai` in README for inbound enterprise interest
-
-### Phase 2 — Design Partner (Next)
-
-- Identify 1–3 enterprise design partners from inbound interest
-- Build enterprise features against real requirements, not guesses
-- Do not build enterprise infrastructure speculatively
-
-### Phase 3 — Managed Service Launch
-
-- Shadow Run as flagship enterprise feature
-- Landing page with pricing tiers
-- Stripe billing integration
-- Free trial → paid conversion funnel
-
-### Target Buyers
-
-- Platform engineering teams managing PostgreSQL schema changes
-- DBAs in regulated industries (healthcare, fintech)
-- Supabase users (natural ecosystem fit)
-- Teams migrating from deprecated `djrobstep/migra`
-
-### Sales Advantage
-
-Leo's healthcare field service engineering background gives direct
-credibility in clinical/hospital environments where PostgreSQL powers
-EHR integrations and compliance is mandatory.
+**Release:** v1.6.1
 
 ---
 
-## 9. Exit Strategy
+### Planned Sessions (Backlog)
 
-### Target Acquirers
-
-| Acquirer | Rationale | Estimated Multiple |
-|---|---|---|
-| Supabase | Postgres-native, "backend for everyone" platform, already owns database tooling | 10–12x ARR |
-| Redgate | DevOps platform expansion, already acquires database diff/migration tools | 8–10x ARR |
-| AWS | RDS tooling ecosystem, could bundle with Aurora/RDS | Strategic premium |
-
-### Timeline
-
-- **Year 1:** Ship free AI suite, build community, land first enterprise
-  design partners, reach $1–2M ARR
-- **Year 2:** Scale managed service, stack with pgAudit/WAL-G/pgBackRest
-  forks for combined $3–4M ARR
-- **Year 2–3:** Exit at $15–25M to Supabase or Redgate
-
-### Portfolio Context
-
-MigraDiff is the lead project in a stack of deprecated PostgreSQL tool
-forks, all following the same playbook (fork → fix → modernize → add
-enterprise features → acquisition target):
-
-1. **MigraDiff** (migra fork) — schema diff — active, v1.4.0
-2. **pgAudit wrapper** — compliance audit logging — planned
-3. **WAL-G fork** — cloud-native backup workflows (Go) — planned
-4. **pgBackRest fork** — backup/restore (C, v2.58.0 final) — planned
-
-Combined portfolio targets $3–4M ARR and $15–25M exit.
+| Session | Feature | Effort | Value | Notes |
+|---------|---------|--------|-------|-------|
+| 021 | `--document` | Medium-High | High | Schema documentation generation |
+| 022 | pgvector support | Low | Medium | Modern Postgres vector types |
+| 023 | `--suggest-indexes` | Medium | Medium | AI recommends useful indexes |
+| 024 | `--dry-run --explain` | Low | Medium | Preview changes without applying |
+| 025 | Multi-schema refactor | Medium | High | Better support for multiple schemas |
 
 ---
 
-## 10. Development Practices
+## Enterprise Tier (Post v1.6.0)
 
-- **Tests-first:** Confirm runtime failure before writing implementation
-- **No vibe-coding:** Every prompt has explicit stop conditions
-- **CLAUDE.md as convention anchor:** All coding agents read it first
-- **Sequential execution:** OpenCode Zen with `--delay=5` for rate limiting
-- **Tool separation:** Claude (Anthropic) for architecture, strategy,
-  prompt engineering, and dataset quality review; implementation
-  delegated to coding agents (Minimax M2.5, GLM-5.1/DeepSeek V4 Flash)
-- **Linting:** flake8 (0 warnings) and black (clean) enforced on every
-  session exit
-- **Branching:** `feat/session-NNN-feature-name`, local commit only
-  during session, push on release
-- **Commit format:** Defined in CLAUDE.md
+**Gating:** HMAC-signed license key (`MIGRADIFF-ENT-{base64}-{hmac}`)
 
----
+### Features (Roadmap)
 
-## 11. Risk Management
-
-| Risk | Mitigation |
-|---|---|
-| Anthropic API changes | AI features are optional; core diff is dependency-free. Lazy import pattern isolates breakage. |
-| Upstream revival | Unlikely (deprecated 2024, archived). Fork is already ahead on features. |
-| Competitor (e.g. pgAdmin adds diff) | AI suite is differentiator; no PostgreSQL tool has schema-aware AI migration generation. |
-| Low enterprise conversion | Free tier builds acquisition signal regardless; acquirer buys community + technology, not just revenue. |
-| Shadow Run operational complexity | Don't build until design partner requests it. Firecracker microVM lifecycle is well-documented. |
-| Key-person risk | MIT license, clean codebase, comprehensive tests — acquirable even without founder. |
+| Feature | Phase | Timeline | Notes |
+|---------|-------|----------|-------|
+| Hosted AI key | Phase 1 | Month 2–3 | Users don't manage Anthropic API key |
+| Shadow Run | Phase 1 | Month 3–4 | Firecracker microVMs for safe testing |
+| Team RBAC | Phase 2 | Month 4–5 | Multiple users, role-based access |
+| Audit trail dashboard | Phase 2 | Month 5–6 | Compliance, change history, who-did-what |
+| PR comment injection | Phase 2 | Month 6–7 | GitHub App auto-comments on PRs |
+| Compliance reporting | Phase 3 | Month 7–8 | SOC 2, audit logs, retention policies |
 
 ---
 
-## 12. Key Contacts
+## Free vs Enterprise Split
 
-| Role | Contact |
-|---|---|
-| Maintainer | Leo — leo@lateos.ai |
-| Enterprise inquiries | enterprise@lateos.ai |
-| LinkedIn | linkedin.com/in/roongrunchai-chong-c-ab9742108 |
-| GitHub | github.com/migradiff/migra |
+### **Free Tier (Local, User-Controlled)**
+- `--explain` (explain migrations)
+- `--rollback` (generate reversals)
+- `--advise` (risk assessment)
+- `--generate` (write from plain English)
+- `--explain-drift` (compare live databases)
+- `--document` (schema documentation)
+- `--comment-on` (diff annotations)
+- pgvector support
+- Docker/GitHub Actions/pre-commit integration
+- Multi-language README
+
+**Monetization:** Community adoption, word-of-mouth, visibility to Supabase/Redgate
+
+### **Enterprise Tier (Hosted/Managed)**
+- Hosted Anthropic API key management
+- Shadow Run (safe migration testing in isolated VMs)
+- Team RBAC (multiple users, permissions)
+- Audit trail dashboard (compliance, history)
+- PR comment injection (GitHub App integration)
+- Compliance reporting (SOC 2, audit logs)
+
+**Pricing model:** 
+- Free: forever
+- Team: $299/month (5 users, audit logs, team management)
+- Enterprise: custom pricing (large scale, compliance, SLA)
 
 ---
 
-## Document History
+## Key Architecture Decisions
 
-| Version | Date | Changes |
-|---|---|---|
-| 1.0 | June 1, 2026 | Initial formal plan — compiled from sessions 001–013, roadmap discussions, and business strategy. |
+### Build System
+- Poetry (dependency management)
+- Python 3.10+ (floor version)
+- setuptools (explicit dependency for schemainspect compatibility)
+
+### AI Features
+- Claude Haiku (cost-effective, fast)
+- User's own Anthropic API key (free tier)
+- Temperature 0 (deterministic outputs)
+- Lazy imports (only load when used)
+
+### Data Provenance
+- All AI training data pipelines use cryptographic audit traceability
+- Content hash (SHA-256), source_url, harvest_timestamp
+- HMAC-SHA-256 signed pipeline_manifest.json
+- License quarantine file (no split leakage)
+
+### CI/CD
+- GitHub Actions (lint, test matrix, coverage)
+- Branch protection on `master` (CI required)
+- Automated PyPI release on version tags
+- Feature branch workflow (always test before merge)
+
+### Database Support
+- PostgreSQL 12+ (tested 14, 15, 16, 17)
+- schemainspect for schema introspection
+- sqlbag for connection management
+- No ORM dependency (raw SQL + AST parsing)
+
+---
+
+## Known Limitations
+
+### schemainspect + setuptools dependency
+The `schemainspect` package (upstream: djrobstep, unmaintained) uses deprecated `pkg_resources` which requires `setuptools` at runtime. Added as explicit dependency in pyproject.toml.
+
+**Migration path (future):** Replace with maintained schema inspection library or migrate to Rust.
+
+---
+
+## Version History
+
+| Version | Release Date | Key Features |
+|---------|--------------|--------------|
+| v1.3.0 | May 2026 | --explain, --from-migrations-dir |
+| v1.4.0 | June 1, 2026 | --rollback, --advise, --generate |
+| v1.5.0 | June 4, 2026 | COMMENT ON diffing |
+| v1.5.1 | June 4, 2026 | Version bump (no feature changes) |
+| v1.6.0 | TBD (Session 019) | --explain-drift |
+| v1.6.1 | TBD (Session 020) | Multi-language README |
+
+---
+
+## Marketing & Positioning
+
+### Free Tier Positioning
+"The AI-powered PostgreSQL migration tool that explains, reverses, and predicts risk in real-time."
+
+### Enterprise Positioning
+"Safe, auditable database migrations for teams. Compliance-ready. Built for scale."
+
+### Competitive Advantages
+1. **AI-native:** Every migration gets explained and risk-assessed
+2. **Safe-by-default:** Detects dangerous patterns before deployment
+3. **Multi-language:** Explains diffs, docs, and README in 6+ languages
+4. **Live database aware:** `--explain-drift` compares reality, not just migrations
+5. **Open source:** Free tier drives adoption, enterprise tier funds development
+
+---
+
+## Acquisition Narrative
+
+**For Redgate (Flyway competitor):**
+- Redgate owns Flyway (migration tool)
+- MigraDiff fills the "schema analysis" gap
+- Combined: Flyway migrations + MigraDiff intelligence = best-in-class
+
+**For Supabase (PostgreSQL platform):**
+- Supabase sells managed PostgreSQL
+- MigraDiff drives migration adoption
+- Combined: Supabase + MigraDiff = seamless developer experience
+
+**Valuation basis:**
+- v1.6.0: $3–4M ARR → $15–25M exit (3–5x revenue multiple)
+- Enterprise adoption (Year 2): $5–8M ARR → $25–40M exit (5–7x multiple)
+
+---
+
+## Success Metrics (OKRs)
+
+### Q2 2026
+- ✅ v1.5.0 shipped
+- ✅ CI/CD pipeline live
+- ⏳ v1.6.0 shipped (`--explain-drift`)
+- ⏳ 50+ GitHub stars
+- ⏳ 1k+ monthly PyPI downloads
+
+### Q3 2026
+- ⏳ v1.6.1 shipped (multi-language README)
+- ⏳ v1.7.0 shipped (`--document`, pgvector support)
+- ⏳ 10+ enterprise customers ($30k–$100k MRR)
+- ⏳ 100+ GitHub stars
+- ⏳ 5k+ monthly PyPI downloads
+
+### Q4 2026
+- ⏳ Enterprise tier revenue: $50k/month ARR
+- ⏳ Acquisition conversations with Redgate/Supabase
+- ⏳ Featured on r/PostgreSQL, HackerNews
+- ⏳ 10k+ monthly PyPI downloads
+
+---
+
+## Team & Workload
+
+**Team:** Leo (solo, Lateos founder)
+
+**Time allocation:**
+- MigraDiff: 50% (revenue priority)
+- npm-scan: 20% (security research)
+- Other Lateos projects: 30% (pgAudit, ESLint, WAL-G forks)
+
+**Engineering discipline:**
+- Tests first, stop conditions on every prompt
+- Three-phase workflow: reproduce → fix → document
+- CI/CD validates every change before merge to master
+- CLAUDE.md convention anchor for consistency
+- Production-grade pipeline: feature branch → PR → CI → merge → release
+
+---
+
+## Next Steps
+
+1. **Session 019:** Implement `--explain-drift` (7–10 days)
+   - New feature: `migra --from-db X --to-db Y --explain-drift`
+   - 80+ tests (target 270+ total)
+   - Release v1.6.0
+
+2. **Session 020:** Multi-language README (3–5 days)
+   - README in 6 languages
+   - i18n links from main README
+   - Release v1.6.1
+
+3. **Post v1.6.0:** Enterprise tier planning
+   - Design licensing system
+   - Plan hosted features
+   - Build enterprise marketing narrative
+
+---
+
+**Document version:** Updated June 4, 2026 (post-Session 018)  
+**Last updated by:** Claude (with Leo)  
+**Repository:** https://github.com/postgresql-tools/migra

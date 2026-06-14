@@ -3,7 +3,7 @@
 ## Basic Usage (Connection Strings)
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -12,7 +12,7 @@
 ## Schema Dump Files (No Live Connection Required)
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_file: schema_production.sql
     head_file: schema_branch.sql
@@ -21,7 +21,7 @@
 ## Fail on Destructive Operations
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     head_url: ${{ secrets.DB_BRANCH_URL }}
@@ -31,7 +31,7 @@
 ## Migrations Directory
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
     migrations_dir: ./supabase/migrations
@@ -40,7 +40,7 @@
 ## JSON Output
 
 ```yaml
-- uses: migradiff/migra@v1
+- uses: postgresql-tools/migra@v1
   id: schema_diff
   with:
     base_url: ${{ secrets.DB_PRODUCTION_URL }}
