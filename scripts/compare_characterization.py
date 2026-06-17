@@ -95,9 +95,7 @@ def format_diff(current, base_artifact, name):
 def write_summary_table(diffs, all_names, file=sys.stdout):
     sep = "+" + "-" * 32 + "+" + "-" * 18 + "+"
     file.write(sep + "\n")
-    file.write(
-        "| {:<30} | {:<16} |\n".format("Scenario", "Result")
-    )
+    file.write("| {:<30} | {:<16} |\n".format("Scenario", "Result"))
     file.write(sep + "\n")
 
     drift_count = 0
@@ -113,16 +111,16 @@ def write_summary_table(diffs, all_names, file=sys.stdout):
         elif result.startswith("MISSING"):
             missing_count += 1
 
-        file.write(
-            "| {:<30} | {:<16} |\n".format(name, result)
-        )
+        file.write("| {:<30} | {:<16} |\n".format(name, result))
 
     file.write(sep + "\n")
 
     total = len(all_names)
-    file.write("Summary: {} total, {} match, {} drift, {} missing\n".format(
-        total, match_count, drift_count, missing_count
-    ))
+    file.write(
+        "Summary: {} total, {} match, {} drift, {} missing\n".format(
+            total, match_count, drift_count, missing_count
+        )
+    )
 
     return drift_count > 0
 
@@ -152,7 +150,9 @@ def main():
     if not base:
         print("WARNING: No artifacts found in base_dir: {}".format(args.base_dir))
         print("This is expected on the first run or after artifact expiry.")
-        print("Nothing to compare — this run's artifacts will serve as the new baseline.")
+        print(
+            "Nothing to compare — this run's artifacts will serve as the new baseline."
+        )
         sys.exit(0)
 
     diffs, all_names = compare_artifacts(current, base)

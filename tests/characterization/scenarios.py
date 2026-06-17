@@ -1,6 +1,5 @@
 from __future__ import unicode_literals
 
-
 SCENARIOS = [
     # ============================================================
     # ERROR-PATH SCENARIOS — every AI flag with no API key

@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 from .scenarios import SCENARIOS
 
-
 ARTIFACT_DIR = os.path.join(os.path.dirname(__file__), "_artifacts")
 
 
@@ -45,13 +44,14 @@ def run_scenario(scenario):
     patches = []
 
     if scenario.get("env") is not None:
-        patches.append(
-            patch.dict("os.environ", scenario["env"], clear=True)
-        )
+        patches.append(patch.dict("os.environ", scenario["env"], clear=True))
 
     if "load_config_return" in scenario:
         patches.append(
-            patch("migra.ai_explain.load_config", return_value=scenario["load_config_return"])
+            patch(
+                "migra.ai_explain.load_config",
+                return_value=scenario["load_config_return"],
+            )
         )
 
     if scenario.get("mock_import_error"):
@@ -65,19 +65,13 @@ def run_scenario(scenario):
         if scenario.get("mock_runtime_error"):
             mock_client = MagicMock()
             mock_client.messages.create.side_effect = RuntimeError("AI failure")
-            patches.append(
-                patch("anthropic.Anthropic", return_value=mock_client)
-            )
+            patches.append(patch("anthropic.Anthropic", return_value=mock_client))
         else:
             patches.append(_mock_anthropic(response_text))
 
     if scenario.get("mock_inspector"):
-        patches.append(
-            patch("schemainspect.get_inspector", return_value=MagicMock())
-        )
-        patches.append(
-            patch("migra.db_inspector._fetch_table_sizes", return_value={})
-        )
+        patches.append(patch("schemainspect.get_inspector", return_value=MagicMock()))
+        patches.append(patch("migra.db_inspector._fetch_table_sizes", return_value={}))
 
     for p in patches:
         p.start()

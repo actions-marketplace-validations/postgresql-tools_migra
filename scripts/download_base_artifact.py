@@ -30,7 +30,6 @@ import tempfile
 import zipfile
 from urllib.request import Request, urlopen
 
-
 ARTIFACT_NAME_PREFIX = "characterization-"
 OUTPUT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -144,11 +143,7 @@ def main():
 
     # Verify something was extracted
     extracted = os.listdir(OUTPUT_DIR)
-    print(
-        "Downloaded and extracted {} files to {}".format(
-            len(extracted), OUTPUT_DIR
-        )
-    )
+    print("Downloaded and extracted {} files to {}".format(len(extracted), OUTPUT_DIR))
     sys.exit(0)
 
 
