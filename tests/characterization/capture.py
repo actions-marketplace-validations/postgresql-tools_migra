@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 import io
 import json
 import os
-import sys
 from unittest.mock import MagicMock, patch
 
 from .scenarios import SCENARIOS
